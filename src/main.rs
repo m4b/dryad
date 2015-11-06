@@ -1,13 +1,14 @@
-#![feature(no_std, lang_items, asm, core, core_str_ext)]
-#![no_std]
+//#![feature(no_std, lang_items, asm, core, core_str_ext)]
+//#![no_std]
+#![feature(asm)]
 #![no_main]
-#![no_builtins]
+//#![no_builtins]
 
 #![allow(unused_mut)]
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-mod llvm_symbols;
+//mod llvm_symbols;
 mod auxv;
 mod kernel_block;
 mod utils;
@@ -48,7 +49,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
     unsafe {
         // this is the linker's elf_header and program_header[0]
         // TODO: do header::to_header
-        let elf_header:&header::Header = core::mem::transmute(linker_image.base as *const u64);
+        let elf_header:&header::Header = mem::transmute(linker_image.base as *const u64);
         write(&"LINKER ELF\n");
         elf_header.debug_print();
         let addr = (linker_image.base + elf_header.e_phoff) as *const program_header::ProgramHeader;
@@ -72,7 +73,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
         }
     }
 
-        if _start as *const u64 as u64 == linker_image.entry {
+    if _start as *const u64 as u64 == linker_image.entry {
         // because it's _tradition_
         // (https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
         // line 786:

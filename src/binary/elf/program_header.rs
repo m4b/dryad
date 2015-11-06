@@ -1,4 +1,4 @@
-use core::slice;
+use std::slice;
 use utils::*;
 
 #[repr(C)]

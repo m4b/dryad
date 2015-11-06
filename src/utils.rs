@@ -1,7 +1,7 @@
 #![allow(private_no_mangle_fns)]
 
-use core::str;
-use core::slice;
+use std::str;
+use std::slice;
 
 #[no_mangle]
 pub extern fn _exit(code: u64) {
