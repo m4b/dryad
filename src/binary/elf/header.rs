@@ -1,6 +1,8 @@
 use utils::*;
+use std::mem;
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct Header {
     pub e_ident: [u8; 16],
     pub e_type: u16,
@@ -18,7 +20,14 @@ pub struct Header {
     pub e_shstrndx: u16,
 }
 
-impl Header {
+pub unsafe fn as_header<'a>(hdrp: *const u64) -> &'a Header {
+    mem::transmute(hdrp)
+        //        let e_ident = slice::from_raw_parts(hdrp, 16);
+        //        let e_type = 
+        //        Header{  }
+}
+
+impl Header {    
     pub unsafe fn debug_print (&self) {
         write(&"-=Elf64_hdr=-\n");
         write(&"e_type: 0x");

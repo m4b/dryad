@@ -38,18 +38,17 @@ extern {
 #[no_mangle]
 pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
     unsafe { write(&"dryad::_dryad_init\n"); }
-
+    
     let block = KernelBlock::new(raw_args);
     unsafe { block.debug_print(); }
 
     let linker_image = image::Elf::new(&block);
     unsafe { linker_image.debug_print(); }
 
-    // such unsafeties
     unsafe {
         // this is the linker's elf_header and program_header[0]
-        // TODO: do header::to_header
-        let elf_header:&header::Header = mem::transmute(linker_image.base as *const u64);
+        let elf_header = header::as_header(linker_image.base as *const u64);
+//        println!("{:?}", elf_header);
         write(&"LINKER ELF\n");
         elf_header.debug_print();
         let addr = (linker_image.base + elf_header.e_phoff) as *const program_header::ProgramHeader;
@@ -61,10 +60,20 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
     // TODO: refactor and remove, for testing
     unsafe {
         let addr = linker_image.phdr as *const program_header::ProgramHeader;
+
         let phdrs = program_header::to_phdr_array(addr, linker_image.phnum as usize);
+        /*
+        write(&"num phdrs: ");
+        write_u64(phdrs.len() as u64, false);
+        write(&"\n");
+        */
         if let Some(dynamic) = dyn::get_dynamic_array(phdrs) {
-            write(&"EXE _DYNAMIC\n");
-            dyn::debug_print_dynamic(dynamic);
+            let strtab = dyn::get_strtab(dynamic);
+            let base = linker_image.base;
+            let needed = dyn::get_needed(dynamic, strtab, base);
+//            write(&"EXE _DYNAMIC\n");
+//            dyn::debug_print_dynamic(dynamic);
+
         } else {
             write(&"<dryad> NO DYNAMIC for ");
             // TODO: add proper name value via slice
@@ -77,7 +86,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
         // because it's _tradition_
         // (https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
         // line 786:
-        // > Ho ho.  We are not the program interpreter!  We are the program itself! 
+        // > Ho ho.  We are not the program interpreter!  We are the program itself!
         unsafe { write(&"-=|dryad====-\n"); }
         _exit(0);
         0

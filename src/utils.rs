@@ -1,3 +1,4 @@
+//#![feature(asm)]
 #![allow(private_no_mangle_fns)]
 
 use std::str;
@@ -15,9 +16,19 @@ pub extern fn _exit(code: u64) {
 }
 
 // this comes from asm.s
+
 extern {
     fn _print(msg: *const u8, len: u64);
 }
+
+/*
+fn _print(msg: *const u8, len: u64) {
+    unsafe {
+        let slice = slice::from_raw_parts(msg, len as usize);
+        println!("{:?}", &slice);
+    }
+}
+*/
 
 #[no_mangle]
 pub unsafe extern fn write(msg: &str){
@@ -59,13 +70,25 @@ fn digit_to_char_code(i: u8) -> u8 {
 }
 
 fn num_digits(i: u64) -> usize {
-    let mut count = 0;
-    let mut current = i;
-    while current > 0 {
-        current /= 10;
-        count += 1;
-    }
-    count
+    if i == 0 {
+        1
+    } else {
+        let mut count = 0;
+        let mut current = i;
+        while current > 0 {
+            current /= 10;
+            count += 1;
+        }
+        count
+    } 
+}
+
+#[test]
+fn num_digits_t() {
+    assert_eq!(num_digits(0), 1);
+    assert_eq!(num_digits(10), 2);
+    assert_eq!(num_digits(99), 2);
+    assert_eq!(num_digits(999), 3);
 }
 
 #[no_mangle]
