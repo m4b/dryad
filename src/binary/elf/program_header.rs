@@ -1,6 +1,30 @@
 use std::slice;
 use utils::*;
 
+const PHDR_SIZE:u64 = 64;
+
+pub const PT_NULL:u32 = 0;
+pub const PT_LOAD:u32 = 1;
+pub const PT_DYNAMIC:u32 = 2;
+pub const PT_INTERP:u32 =	3;
+pub const PT_NOTE:u32 = 4;
+pub const PT_SHLIB:u32 = 5;
+pub const PT_PHDR:u32 = 6;
+pub const PT_TLS:u32 = 7;
+pub const PT_NUM:u32 = 8;
+pub const PT_LOOS:u32 = 0x60000000;
+pub const PT_GNU_EH_FRAME:u32 = 0x6474e550;
+pub const PT_GNU_STACK:u32 = 0x6474e551;
+pub const PT_GNU_RELRO:u32 = 0x6474e552;
+pub const PT_LOSUNW:u32 = 0x6ffffffa;
+pub const PT_SUNWBSS:u32 = 0x6ffffffa;
+pub const PT_SUNWSTACK:u32 = 0x6ffffffb;
+pub const PT_HISUNW:u32 = 0x6fffffff;
+pub const PT_HIOS:u32 = 0x6fffffff;
+pub const PT_LOPROC:u32 = 0x70000000;
+pub const PT_HIPROC:u32 = 0x7fffffff;
+
+#[derive(Debug)]
 #[repr(C)]
 pub struct ProgramHeader {
     pub p_type: u32,
@@ -40,9 +64,6 @@ impl ProgramHeader {
         write(&"p_align: ");
         write_u64(self.p_align as u64, false);
         write(&"\n");
-    }
-    pub fn size_of(&self) -> u64 {
-        64
     }
 }
 

@@ -28,6 +28,8 @@ Contributions wholeheartedly welcome!  I'd like this to be very much a community
 
 If you don't know anything about dynamic linking, that's totally ok!  Here are some resources if you're curious:
 
+0. [The ELF specification](http://flint.cs.yale.edu/cs422/doc/ELF_Format.pdf)
+1. [x86-64 System V Application Binary Interface](http://www.x86-64.org/documentation/abi.pdf)
 1. [google's bionic dynamic linker source code](http://github.com/android/platform_bionic/)
 2. [glibc dynamic linker source code](https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
 3. [sco dynamic linking document](http://www.sco.com/developers/gabi/latest/ch5.dynamic.html)

@@ -1,6 +1,8 @@
 use auxv;
 use utils::*;
 
+const AUX_CNT:u64 = 38;
+
 //TODO: change *const to slices, esp. argv and envc
 #[repr(C)]
 pub struct KernelBlock {
@@ -12,7 +14,7 @@ pub struct KernelBlock {
 }
 
 impl KernelBlock {
-
+    // TODO: use consts
     pub fn getauxval(&self, t:auxv::AT) -> Result<u64, ()> {
         unsafe {
             let ptr = self.auxv.clone();
@@ -55,6 +57,20 @@ impl KernelBlock {
                 auxv: auxv,
             }
         }
+    }
+
+    pub fn get_aux (&self) -> Vec<u64> {
+        let mut aux:Vec<u64> = vec![0; 38];
+        let mut i = 0;
+        unsafe {
+            while (&*self.auxv.offset(i as isize)).a_val != auxv::AT_NULL {
+                let auxv_t = &*self.auxv.offset(i as isize);
+                aux[auxv_t.a_type as usize] = auxv_t.a_val;
+                i += 1;
+            }
+        }
+        aux
+        
     }
 
     pub unsafe fn debug_print (&self) -> () {
