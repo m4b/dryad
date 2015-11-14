@@ -37,10 +37,34 @@ pub struct ProgramHeader {
     pub p_align: u64,
 }
 
+fn pt_to_str(pt: u32) -> &'static str {
+    match pt {
+        0 => "PT_NULL",
+        1 => "PT_LOAD",
+        2 => "PT_DYNAMIC",
+        3 => "PT_INTERP",
+        4 => "PT_NOTE",
+        5 => "PT_SHLIB",
+        6 => "PT_PHDR",
+        7 => "PT_TLS",
+        8 => "PT_NUM",
+        0x60000000 => "PT_LOOS",
+        0x6474e550 => "PT_GNU_EH_FRAME",
+        0x6474e551 => "PT_GNU_STACK",
+        0x6474e552 => "PT_GNU_RELRO",
+        0x6ffffffa => "PT_SUNWBSS",
+        0x6ffffffb => "PT_SUNWSTACK",
+        0x6fffffff => "PT_HIOS",
+        0x70000000 => "PT_LOPROC",
+        0x7fffffff => "PT_HIPROC",
+        _ => "UNKNOWN_PT"
+    }
+}
+
 impl fmt::Debug for ProgramHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "p_type: 0x{:x} p_flags 0x{:x} p_offset: 0x{:x} p_vaddr: 0x{:x} p_vaddr: 0x{:x} p_filesz: 0x{:x} p_memsz: 0x{:x} p_align: {}",
-               self.p_type, self.p_flags, self.p_offset, self.p_vaddr,
+        write!(f, "p_type: {} p_flags 0x{:x} p_offset: 0x{:x} p_vaddr: 0x{:x} p_vaddr: 0x{:x} p_filesz: 0x{:x} p_memsz: 0x{:x} p_align: {}",
+               pt_to_str(self.p_type), self.p_flags, self.p_offset, self.p_vaddr,
                self.p_paddr, self.p_filesz, self.p_memsz, self.p_align
                )
     }

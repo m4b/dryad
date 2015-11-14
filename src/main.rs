@@ -118,6 +118,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
 
     // TODO: refactor and remove, for testing
     // EXECUTABLE
+    println!("BEGIN EXE LINKING");
     unsafe {
         let addr = linker_image.phdr as *const program_header::ProgramHeader;
         let phdrs = program_header::to_phdr_array(addr, linker_image.phnum as usize);
@@ -131,24 +132,16 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
                 break;
             }
         }
-        write(&"load bias: 0x");
-        write_u64(load_bias, true);
-        write(&" base: 0x");
-        write_u64(base, true);
-        write(&"\n");
+        println!("load bias: {:x} base: {:x}", load_bias, base);
 
         if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
-            write(&"EXE _DYNAMIC\n");
-            dyn::debug_print_dynamic(dynamic);
+            println!("{:#?}", dynamic);
             let strtab = dyn::get_strtab(load_bias, dynamic);
             let needed = dyn::get_needed(dynamic, strtab, base, load_bias);
-            dyn::print_needed(needed);
+            println!("Needed: {:#?}", needed);
 
         } else {
-            write(&"<dryad> NO DYNAMIC for ");
-            // TODO: add proper name value via slice
-            write_chars_at(*block.argv, 0);
-            write(&"\n");
+//            println!("<dryad> NO DYNAMIC for {}", *block.argv);
         }
     }
     

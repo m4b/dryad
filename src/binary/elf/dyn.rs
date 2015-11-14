@@ -1,5 +1,4 @@
-#![allow(private_no_mangle_fns)]
-
+use std::fmt;
 use std::str;
 use std::slice;
 use utils::*;
@@ -22,6 +21,60 @@ impl Dyn {
     }
 }
 
+#[inline]
+fn tag_to_str(tag:u64) -> &'static str {
+    match tag {
+        0 => "DT_NULL",
+        1 => "DT_NEEDED",
+        2 => "DT_PLTRELSZ",
+        3 => "DT_PLTGOT",
+        4 => "DT_HASH",
+        5 => "DT_STRTAB",
+        6 => "DT_SYMTAB",
+        7 => "DT_RELA",
+        8 => "DT_RELASZ",
+        9 => "DT_RELAENT",
+        10 => "DT_STRSZ:",
+        11 => "DT_SYMENT",
+        12 => "DT_INIT",
+        13 => "DT_FINI",
+        14 => "DT_SONAME",
+        15 => "DT_RPATH",
+        16 => "DT_SYMBOLIC",
+        17 => "DT_REL",
+        18 => "DT_RELSZ",
+        19 => "DT_RELENT",
+        20 => "DT_PLTREL",
+        21 => "DT_DEBUG",
+        22 => "DT_TEXTREL",
+        23 => "DT_JMPREL",
+        24 => "DT_BIND_NOW",
+        25 => "DT_INIT_ARRAY",
+        26 => "DT_FINI_ARRAY",
+        27 => "DT_INIT_ARRAYSZ",
+        28 => "DT_FINI_ARRAYSZ",
+        29 => "DT_RUNPATH",
+        30 => "DT_FLAGS",
+        32 => "DT_PREINIT_ARRAY",
+        33 => "DT_PREINIT_ARRAYSZ",
+        34 => "DT_NUM",
+        0x6000000d => "DT_LOOS",
+        0x6ffff000 => "DT_HIOS",
+        0x70000000 => "DT_LOPROC",
+        0x7fffffff => "DT_HIPROC",
+        0x6ffffff0 => "DT_VERSYM",
+        0x6ffffff9 => "DT_RELACOUNT",
+        0x6ffffffa => "DT_RELCOUNT",
+        _ => "UNKNOWN_TAG"
+    }
+}
+
+impl fmt::Debug for Dyn {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "d_tag: {} d_val: {:x}", tag_to_str(self.d_tag), self.d_val)
+    }
+}
+
 trait DynamicArray {
     unsafe fn debug_print (&self);
 }
@@ -34,7 +87,6 @@ impl DynamicArray for [Dyn] {
     }
 }
 
-#[no_mangle]
 pub unsafe fn get_dynamic_array<'a>(bias:u64, phdrs: &'a [ProgramHeader]) -> Option<&'a [Dyn]> {
     for phdr in phdrs {
         if phdr.p_type == PT_DYNAMIC {
@@ -74,16 +126,7 @@ pub fn get_needed<'a>(dyns: &'a [Dyn], strtab: u64, base: u64, bias: u64) -> Vec
     let mut needed = vec![];
     for dyn in dyns {
         if dyn.d_tag == DT_NEEDED {
-            unsafe {
-                write(&"getting string at 0x");
-                write_u64(strtab+dyn.d_val+bias, true);
-                write(&" : ");
-            }
             let string = string_from_strtab((strtab + dyn.d_val + bias) as *const u8);
-            unsafe {
-                write(string);
-                write(&"\n");
-            }
             needed.push(string);
         }
     }
