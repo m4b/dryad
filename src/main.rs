@@ -51,6 +51,7 @@ fn compute_load_bias(base:u64, phdrs:&[program_header::ProgramHeader]) -> u64 {
     0
 }
 
+// we can relocate ourselves using just the base provided by AT_BASE in the auxillary vector
 #[inline]
 unsafe fn relocate_self(base: u64){
     let elf_header = header::as_header(base as *const u64);
@@ -70,7 +71,7 @@ unsafe fn relocate_self(base: u64){
         write(&"number of relocations: ");
         write_u64(relocations.len() as u64, false);
         write(&"\n");
-        relocate::relocate(&relocations, load_bias);
+        relocate::relocate(load_bias, &relocations);
     } else {
         write(&"<dryad> SEVERE: no dynamic array found for dryad; exiting\n");
         _exit(1);
@@ -89,7 +90,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
     let start_addr = _start as *const u64 as u64;
 
     // without this,
-    // following comparison fails for some inexplicable reason...
+    // following comparison fails for some inexplicable reason... yay for side-effectful printing again
     unsafe {
         write(&"start: 0x");
         write_u64(start_addr, true);
@@ -110,19 +111,17 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
 
     unsafe {
         relocate_self(linker_image.base);
-        
+        // we have successfully relocated ourselves; time to init tls
         write(&"dryad::init_tls\n");
         __init_tls(block.get_aux().as_ptr());
     }
 
-
-    // TODO: refactor and remove, for testing
     // EXECUTABLE
     println!("BEGIN EXE LINKING");
     unsafe {
         let addr = linker_image.phdr as *const program_header::ProgramHeader;
         let phdrs = program_header::to_phdr_array(addr, linker_image.phnum as usize);
-        println!("{:#?}", &phdrs);
+        println!("Program Headers: {:#?}", &phdrs);
         let mut base = 0;
         let mut load_bias = 0;
         for phdr in phdrs {
@@ -135,7 +134,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
         println!("load bias: {:x} base: {:x}", load_bias, base);
 
         if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
-            println!("{:#?}", dynamic);
+            println!("_DYNAMIC: {:#?}", dynamic);
             let strtab = dyn::get_strtab(load_bias, dynamic);
             let needed = dyn::get_needed(dynamic, strtab, base, load_bias);
             println!("Needed: {:#?}", needed);
