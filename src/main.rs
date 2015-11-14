@@ -51,10 +51,35 @@ fn compute_load_bias(base:u64, phdrs:&[program_header::ProgramHeader]) -> u64 {
     0
 }
 
+#[inline]
+unsafe fn relocate_self(base: u64){
+    let elf_header = header::as_header(base as *const u64);
+    let addr = (base + elf_header.e_phoff) as *const program_header::ProgramHeader;
+    let linker_phdrs = program_header::to_phdr_array(addr, elf_header.e_phnum as usize);
+
+//    elf_header.debug_print();
+//    program_header::debug_print_phdrs(linker_phdrs);
+
+    let load_bias = compute_load_bias(base, &linker_phdrs);
+    write(&"load bias: 0x");
+    write_u64(load_bias, true);
+    write(&"\n");
+    if let Some(dynamic) = dyn::get_dynamic_array(load_bias, linker_phdrs) {
+        //dyn::debug_print_dynamic(dynamic);
+        let relocations = relocate::get_relocations(load_bias, &dynamic);
+        write(&"number of relocations: ");
+        write_u64(relocations.len() as u64, false);
+        write(&"\n");
+        relocate::relocate(&relocations, load_bias);
+    } else {
+        write(&"<dryad> SEVERE: no dynamic array found for dryad; exiting\n");
+        _exit(1);
+    }
+}
+
 #[no_mangle]
 pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
-    unsafe { write(&"dryad::_dryad_init\n"); }
-    
+
     let block = KernelBlock::new(raw_args);
     unsafe { block.unsafe_print(); }
 
@@ -84,53 +109,26 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
     }
 
     unsafe {
+        relocate_self(linker_image.base);
+        
         write(&"dryad::init_tls\n");
         __init_tls(block.get_aux().as_ptr());
     }
 
-    // this is the linker's elf_header and program_header[0]
-    unsafe {
-        let elf_header = header::as_header(linker_image.base as *const u64);
-        write(&"LINKER ELF\n");
-        elf_header.debug_print();
-        let addr = (linker_image.base + elf_header.e_phoff) as *const program_header::ProgramHeader;
-        let linker_phdrs = program_header::to_phdr_array(addr, elf_header.e_phnum as usize);
-        write(&"LINKER PHDRS\n");
-        program_header::debug_print_phdrs(linker_phdrs);
-
-        let load_bias = compute_load_bias(linker_image.base, &linker_phdrs);
-        write(&"load bias: 0x");
-        write_u64(load_bias, true);
-        write(&"\n");
-        if let Some(dynamic) = dyn::get_dynamic_array(load_bias, linker_phdrs) {
-            write(&"LINKER _DYNAMIC\n");
-            dyn::debug_print_dynamic(dynamic);
-            let relocations = relocate::get_relocations(load_bias, dynamic);
-            write(&"\nnumber of relocations: ");
-            write_u64(relocations.len() as u64, false);
-            write(&"\n");
-            relocate::relocate(&relocations, load_bias);
-            println!("{:?}", linker_phdrs);
-        } else {
-            write(&"<dryad> NO DYNAMIC for ");
-            // TODO: add proper name value via slice
-            write_chars_at(*block.argv, 0);
-            write(&"\n");
-        }
-    }
 
     // TODO: refactor and remove, for testing
     // EXECUTABLE
     unsafe {
         let addr = linker_image.phdr as *const program_header::ProgramHeader;
         let phdrs = program_header::to_phdr_array(addr, linker_image.phnum as usize);
-        println!("{:?}", phdrs);
+        println!("{:#?}", &phdrs);
         let mut base = 0;
         let mut load_bias = 0;
         for phdr in phdrs {
             if phdr.p_type == program_header::PT_PHDR {
                 load_bias = linker_image.phdr - phdr.p_vaddr;
                 base = linker_image.phdr - phdr.p_offset;
+                break;
             }
         }
         write(&"load bias: 0x");
@@ -159,6 +157,6 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
     // to the program entry in test/test,
     // but segfaults when printf is called (obviously)
     // since we've done no dynamic linking
-    //        _exit(0);
+    _exit(0);
     linker_image.entry
 }

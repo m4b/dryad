@@ -40,15 +40,9 @@ pub unsafe fn get_dynamic_array<'a>(bias:u64, phdrs: &'a [ProgramHeader]) -> Opt
         if phdr.p_type == PT_DYNAMIC {
             let dynp = (phdr.p_vaddr + bias) as *const Dyn;
             let mut idx = 0;
-            write(&"DYN FOUND\n");
             while (*(dynp.offset(idx))).d_tag != DT_NULL {
-                write_u64(idx as u64, false);
-                write(&" ");
                 idx += 1;
             }
-            write(&"\nFINAL ");
-            write_u64(idx as u64, false);
-            write(&"\n");
             return Some(slice::from_raw_parts(dynp, idx as usize));
         }
     }

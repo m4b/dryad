@@ -1,7 +1,8 @@
 use std::slice;
+use std::fmt;
 use utils::*;
 
-const PHDR_SIZE:u64 = 64;
+pub const PHDR_SIZE:u64 = 64;
 
 pub const PT_NULL:u32 = 0;
 pub const PT_LOAD:u32 = 1;
@@ -24,7 +25,6 @@ pub const PT_HIOS:u32 = 0x6fffffff;
 pub const PT_LOPROC:u32 = 0x70000000;
 pub const PT_HIPROC:u32 = 0x7fffffff;
 
-#[derive(Debug)]
 #[repr(C)]
 pub struct ProgramHeader {
     pub p_type: u32,
@@ -35,6 +35,15 @@ pub struct ProgramHeader {
     pub p_filesz: u64,
     pub p_memsz: u64,
     pub p_align: u64,
+}
+
+impl fmt::Debug for ProgramHeader {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "p_type: 0x{:x} p_flags 0x{:x} p_offset: 0x{:x} p_vaddr: 0x{:x} p_vaddr: 0x{:x} p_filesz: 0x{:x} p_memsz: 0x{:x} p_align: {}",
+               self.p_type, self.p_flags, self.p_offset, self.p_vaddr,
+               self.p_paddr, self.p_filesz, self.p_memsz, self.p_align
+               )
+    }
 }
 
 impl ProgramHeader {
