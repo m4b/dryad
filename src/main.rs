@@ -61,6 +61,28 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
     let linker_image = image::elf::Elf::new(&block);
     unsafe { linker_image.debug_print(); }
 
+    let start_addr = _start as *const u64 as u64;
+
+    // without this,
+    // following comparison fails for some inexplicable reason...
+    unsafe {
+        write(&"start: 0x");
+        write_u64(start_addr, true);
+        write(&" entry: 0x");
+        write_u64(linker_image.entry, true);
+        write(&"\n");
+    }
+    
+    if start_addr == linker_image.entry {
+        // because it's _tradition_
+        // (https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
+        // line 786:
+        // > Ho ho.  We are not the program interpreter!  We are the program itself!
+        unsafe { write(&"-=|dryad====-\n"); }
+        _exit(0);
+        return 0;
+    }
+
     unsafe {
         write(&"dryad::init_tls\n");
         __init_tls(block.get_aux().as_ptr());
@@ -131,22 +153,12 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
             write(&"\n");
         }
     }
-
-    if _start as *const u64 as u64 == linker_image.entry {
-        // because it's _tradition_
-        // (https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
-        // line 786:
-        // > Ho ho.  We are not the program interpreter!  We are the program itself!
-        unsafe { write(&"-=|dryad====-\n"); }
-        _exit(0);
-        0
-    } else {
-        // commenting _exit will successfully
-        // tranfer control (in my single test case ;))
-        // to the program entry in test/test,
-        // but segfaults when printf is called (obviously)
-        // since we've done no dynamic linking
-        _exit(0);
-        linker_image.entry
-    }
+    
+    // commenting _exit will successfully
+    // tranfer control (in my single test case ;))
+    // to the program entry in test/test,
+    // but segfaults when printf is called (obviously)
+    // since we've done no dynamic linking
+    //        _exit(0);
+    linker_image.entry
 }
