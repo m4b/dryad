@@ -36,6 +36,23 @@ pub unsafe extern fn write(msg: &str){
 }
 
 /*
+#[cfg(debug_assertions)]
+macro_rules! debug_write {
+    ($($t:tt)*) => {
+        unsafe {
+            write($($t)*)
+        }
+    }
+}
+
+#[cfg(not(debug_assertions))]
+macro_rules! debug_write {
+    ($($t:tt)*) => {
+    }
+}
+*/
+
+/*
 // this is _totally_ broken and is massively sideeffectul and unpredicatable
 #[no_mangle]
 pub extern fn write(msg: &str) {

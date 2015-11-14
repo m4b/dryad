@@ -81,7 +81,7 @@ pub fn get_needed<'a>(dyns: &'a [Dyn], strtab: u64, base: u64, bias: u64) -> Vec
     for dyn in dyns {
         if dyn.d_tag == DT_NEEDED {
             unsafe {
-                write(&"getting string at: 0x");
+                write(&"getting string at 0x");
                 write_u64(strtab+dyn.d_val+bias, true);
                 write(&" : ");
             }

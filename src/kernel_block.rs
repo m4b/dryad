@@ -1,7 +1,7 @@
 use auxv;
 use utils::*;
 
-const AUX_CNT:u64 = 38;
+const AUX_CNT:usize = 38;
 
 //TODO: change *const to slices, esp. argv and envc
 #[repr(C)]
@@ -14,21 +14,19 @@ pub struct KernelBlock {
 }
 
 impl KernelBlock {
-    // TODO: use consts
-    pub fn getauxval(&self, t:auxv::AT) -> Result<u64, ()> {
+    pub fn getauxval(&self, t:u64) -> Result<u64, ()> {
         unsafe {
             let ptr = self.auxv.clone();
             let mut i = 1;
             let mut v = &*ptr;
             //            while v.a_type != auxv::AT::NULL {
             while v.a_type != 0 {
-                if auxv::u64_to_at(v.a_type) == t {
+                if v.a_type == t {
                     return Ok (v.a_val);
                 }
                 v = &*ptr.offset(i);
                 i += 1;
             }        
-            //Mustabah: ptr.iter().take_while(|x| x.some_field != SOME_DEFINE)
         }
         Err(())
     }
@@ -60,21 +58,19 @@ impl KernelBlock {
     }
 
     pub fn get_aux (&self) -> Vec<u64> {
-        let mut aux:Vec<u64> = vec![0; 38];
-        let mut i = 0;
+        let mut aux:Vec<u64> = vec![0; AUX_CNT];
+        let mut i:isize = 0;
         unsafe {
-            while (&*self.auxv.offset(i as isize)).a_val != auxv::AT_NULL {
-                let auxv_t = &*self.auxv.offset(i as isize);
+            while (&*self.auxv.offset(i)).a_val != auxv::AT_NULL {
+                let auxv_t = &*self.auxv.offset(i);
                 aux[auxv_t.a_type as usize] = auxv_t.a_val;
                 i += 1;
             }
         }
-        aux
-        
+        aux        
     }
 
-    pub unsafe fn debug_print (&self) -> () {
-
+    pub unsafe fn unsafe_print (&self) -> () {
         write(&"argc: ");
         write_u64(self.argc as u64, false);
         write(&"\n");

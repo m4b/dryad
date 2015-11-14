@@ -15,6 +15,7 @@ mod utils;
 mod image;
 mod binary;
 mod relocate;
+mod link_map;
 
 use kernel_block::KernelBlock;
 use utils::*;
@@ -40,6 +41,7 @@ extern {
     fn __init_tls(aux: *const u64); // pointer to aux vector indexed by AT_<TYPE> that musl likes
 }
 
+#[inline]
 fn compute_load_bias(base:u64, phdrs:&[program_header::ProgramHeader]) -> u64 {
     for phdr in phdrs {
         if phdr.p_type == program_header::PT_LOAD {
@@ -54,9 +56,9 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
     unsafe { write(&"dryad::_dryad_init\n"); }
     
     let block = KernelBlock::new(raw_args);
-    unsafe { block.debug_print(); }
+    unsafe { block.unsafe_print(); }
 
-    let linker_image = image::Elf::new(&block);
+    let linker_image = image::elf::Elf::new(&block);
     unsafe { linker_image.debug_print(); }
 
     unsafe {
