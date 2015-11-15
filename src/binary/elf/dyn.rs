@@ -71,19 +71,7 @@ fn tag_to_str(tag:u64) -> &'static str {
 
 impl fmt::Debug for Dyn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "d_tag: {} d_val: {:x}", tag_to_str(self.d_tag), self.d_val)
-    }
-}
-
-trait DynamicArray {
-    unsafe fn debug_print (&self);
-}
-
-impl DynamicArray for [Dyn] {
-    unsafe fn debug_print(&self) {
-        for dyn in self {
-            dyn.debug_print();
-        }
+        write!(f, "d_tag: {} d_val: 0x{:x}", tag_to_str(self.d_tag), self.d_val)
     }
 }
 
@@ -131,14 +119,6 @@ pub fn get_needed<'a>(dyns: &'a [Dyn], strtab: u64, base: u64, bias: u64) -> Vec
         }
     }
     needed
-}
-
-pub unsafe fn print_needed(needed: Vec<&str>) {
-    write(&"Needed: \n");
-    for lib in needed {
-        write(&lib);
-    }
-    write(&"\n");
 }
 
 pub unsafe fn debug_print_dynamic(dynamic: &[Dyn]) {

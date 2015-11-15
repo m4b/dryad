@@ -19,7 +19,6 @@ mod linker;
 
 use kernel_block::KernelBlock;
 use utils::*;
-use binary::elf::header;
 use binary::elf::dyn;
 use binary::elf::program_header;
 //use binary::elf::rela;
@@ -78,8 +77,9 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
             unsafe { __init_tls(block.get_aux().as_ptr()); }
             // EXECUTABLE
             println!("BEGIN EXE LINKING");
-            // TODO: add image::elf::new(<stuff>)
-            // dryad::link(image)
+            // TODO:
+            // * image::elf::new(<stuff>)
+            // * dryad::link(image)
             unsafe {
                 let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
                 let phent  = block.getauxval(auxv::AT_PHENT).unwrap();
@@ -120,7 +120,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
         Err (msg) => {
             unsafe { write(&msg); }
             _exit(1);
-            return 0;
+            0
         }
     }
 }
