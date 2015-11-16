@@ -19,8 +19,8 @@ mod linker;
 
 use kernel_block::KernelBlock;
 use utils::*;
-use binary::elf::dyn;
-use binary::elf::program_header;
+//use binary::elf::dyn;
+//use binary::elf::program_header;
 //use binary::elf::rela;
 
 extern crate libc;
@@ -37,6 +37,7 @@ extern "C" {
 // the raw stack pointer as the argument to _dryad_init
 extern {
     fn _start();
+    fn printf();
 }
 
 #[no_mangle]
@@ -72,42 +73,44 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
     
     match linker::Linker::new(linker_base, &block) {
         Ok (dryad) => {
-            // EXECUTABLE
             println!("BEGIN EXE LINKING");
             // TODO:
             // * image::elf::new(<stuff>)
             // * dryad::link(image)
-                
-                let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
-                let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
+            let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
+            let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
+            let main_image = image::elf::ElfExec::new(phdr_addr, phnum as usize);
+            println!("Main Image:\n  {:#?}", &main_image);
 
-                let main_image = image::elf::ElfExec::new(phdr_addr, phnum as usize);
-                println!("Main Image:\n  {:#?}", &main_image);
-                /*
-                let addr = phdr_addr as *const program_header::ProgramHeader;
-                let phdrs = program_header::to_phdr_array(addr, phnum as usize);
-                println!("Program Headers: {:#?}", &phdrs);
-                let mut base = 0;
-                let mut load_bias = 0;
-                for phdr in phdrs {
-                    if phdr.p_type == program_header::PT_PHDR {
-                        load_bias = phdr_addr - phdr.p_vaddr;
-                        base = phdr_addr - phdr.p_offset;
-                        break;
-                    }
+            println!("{:?}", dryad.link(main_image));
+
+//            println!("&printf: {:?}", printf as *const u64);
+            
+            /*
+            let addr = phdr_addr as *const program_header::ProgramHeader;
+            let phdrs = program_header::to_phdr_array(addr, phnum as usize);
+            println!("Program Headers: {:#?}", &phdrs);
+            let mut base = 0;
+            let mut load_bias = 0;
+            for phdr in phdrs {
+                if phdr.p_type == program_header::PT_PHDR {
+                    load_bias = phdr_addr - phdr.p_vaddr;
+                    base = phdr_addr - phdr.p_offset;
+                    break;
                 }
-                println!("load bias: {:x} base: {:x}", load_bias, base);
-                 */
-                /*
-                if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
-                    println!("_DYNAMIC: {:#?}", dynamic);
-                    let strtab = dyn::get_strtab(load_bias, dynamic);
-                    let needed = dyn::get_needed(dynamic, strtab, base, load_bias);
-                    println!("Needed: {:#?}", needed);
-                } else {
-                    //            println!("<dryad> NO DYNAMIC for {}", *block.argv);
-                }
-                 */
+            }
+            println!("load bias: {:x} base: {:x}", load_bias, base);
+             */
+            /*
+            if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
+                println!("_DYNAMIC: {:#?}", dynamic);
+                let strtab = dyn::get_strtab(load_bias, dynamic);
+                let needed = dyn::get_needed(dynamic, strtab, base, load_bias);
+                println!("Needed: {:#?}", needed);
+            } else {
+                //            println!("<dryad> NO DYNAMIC for {}", *block.argv);
+            }
+             */
             
             // commenting _exit will successfully
             // tranfer control (in my single test case ;))

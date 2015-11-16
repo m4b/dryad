@@ -63,7 +63,7 @@ fn pt_to_str(pt: u32) -> &'static str {
 
 impl fmt::Debug for ProgramHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "p_type: {} p_flags 0x{:x} p_offset: 0x{:x} p_vaddr: 0x{:x} p_vaddr: 0x{:x} p_filesz: 0x{:x} p_memsz: 0x{:x} p_align: {}",
+        write!(f, "p_type: {} p_flags 0x{:x} p_offset: 0x{:x} p_vaddr: 0x{:x} p_paddr: 0x{:x} p_filesz: 0x{:x} p_memsz: 0x{:x} p_align: {}",
                pt_to_str(self.p_type), self.p_flags, self.p_offset, self.p_vaddr,
                self.p_paddr, self.p_filesz, self.p_memsz, self.p_align
                )

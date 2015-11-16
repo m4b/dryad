@@ -1,4 +1,4 @@
-//#![feature(asm)]
+// leave this to allow easy breakpoints on assembly wrappers like _write for now
 #![allow(private_no_mangle_fns)]
 
 use std::str;
@@ -16,7 +16,6 @@ pub extern fn _exit(code: u64) {
 }
 
 // this comes from asm.s
-
 extern {
     fn _print(msg: *const u8, len: u64);
 }
@@ -156,29 +155,24 @@ fn to_hex<'a>(i: &u64, output: &'a mut[u8; 16]) -> &'a str {
     str::from_utf8(output).unwrap().trim_matches('\0')
 }
 
-fn to_str<'a>(cs: *const u8, idx: isize) -> (&'a str, isize) {
+pub fn as_str<'a>(cs: *const u8) -> &'a str {
     if cs.is_null() {
-        ("",0)
+        ""
     }else {
         unsafe {
-            let mut i = idx;
+            let mut i = 0;
             let mut c = *cs;
             while c != 0 {
                 i += 1;
                 c = *cs.offset(i);
             }
             let slice = slice::from_raw_parts(cs, i as usize);
-            (str::from_utf8(slice).unwrap(),i)
+            str::from_utf8(slice).unwrap()
         }
     }
 }
 
-pub fn str_at<'a>(cs: *const u8, idx: isize) -> &'a str {
-    let (s,_) = to_str(cs, idx);
-    s
-}
-
-pub unsafe extern fn write_chars_at(cs: *const u8, idx: isize) {
-    write(str_at(cs,idx));
+pub unsafe extern fn write_chars_at(cs: *const u8) {
+    write(as_str(cs));
 }
 

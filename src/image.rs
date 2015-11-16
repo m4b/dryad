@@ -1,5 +1,3 @@
-
-
 pub mod elf {
 
     use std::fmt;

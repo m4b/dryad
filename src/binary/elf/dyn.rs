@@ -65,6 +65,12 @@ fn tag_to_str(tag:u64) -> &'static str {
         0x6ffffff0 => "DT_VERSYM",
         0x6ffffff9 => "DT_RELACOUNT",
         0x6ffffffa => "DT_RELCOUNT",
+        // new
+        0x6ffffef5 => "DT_GNU_HASH",
+        0x6ffffffc => "DT_VERDEF",
+        0x6ffffffd => "DT_VERDEFNUM",
+        0x6ffffffe => "DT_VERNEED",
+        0x6fffffff => "DT_VERNEEDNUM",
         _ => "UNKNOWN_TAG"
     }
 }
@@ -89,6 +95,7 @@ pub unsafe fn get_dynamic_array<'a>(bias:u64, phdrs: &'a [ProgramHeader]) -> Opt
     None
 }
 
+// TODO: have this return a &[u8] since we know the size of the strtab from dyn
 pub fn get_strtab(bias:u64, dyns: &[Dyn]) -> u64 {
     for dyn in dyns {
         match dyn.d_tag {
@@ -175,3 +182,10 @@ pub const DT_HIPROC:u64 = 0x7fffffff;
 pub const DT_VERSYM:u64 = 0x6ffffff0;
 pub const DT_RELACOUNT:u64 = 0x6ffffff9;
 pub const DT_RELCOUNT:u64 = 0x6ffffffa;
+
+// new
+pub const DT_GNU_HASH:u64 = 0x6ffffef5;
+pub const DT_VERDEF:u64 = 0x6ffffffc;
+pub const DT_VERDEFNUM:u64 = 0x6ffffffd;
+pub const DT_VERNEED:u64 = 0x6ffffffe;
+pub const DT_VERNEEDNUM:u64 = 0x6fffffff;
