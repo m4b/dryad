@@ -19,8 +19,7 @@ impl<'b> KernelBlock<'b> {
             let ptr = self.auxv.clone();
             let mut i = 1;
             let mut v = &*ptr;
-            //            while v.a_type != auxv::AT::NULL {
-            while v.a_type != 0 {
+            while v.a_type != auxv::AT_NULL {
                 if v.a_type == t {
                     return Ok (v.a_val);
                 }
