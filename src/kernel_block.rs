@@ -57,6 +57,7 @@ impl KernelBlock {
         }
     }
 
+    // consider using inout stack-allocated &[u64] slice?
     pub fn get_aux (&self) -> Vec<u64> {
         let mut aux:Vec<u64> = vec![0; AUX_CNT];
         let mut i:isize = 0;

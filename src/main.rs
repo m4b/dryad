@@ -37,7 +37,6 @@ extern "C" {
 // the raw stack pointer as the argument to _dryad_init
 extern {
     fn _start();
-    fn __init_tls(aux: *const u64); // pointer to aux vector indexed by AT_<TYPE> that musl likes
 }
 
 #[no_mangle]
@@ -71,20 +70,20 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
         return 0;
     }
     
-    match linker::Linker::new(linker_base) {
+    match linker::Linker::new(linker_base, &block) {
         Ok (dryad) => {
-            // dryad has successfully relocated itself; time to init tls
-            unsafe { __init_tls(block.get_aux().as_ptr()); }
             // EXECUTABLE
             println!("BEGIN EXE LINKING");
             // TODO:
             // * image::elf::new(<stuff>)
             // * dryad::link(image)
-            unsafe {
+                
                 let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
-                let phent  = block.getauxval(auxv::AT_PHENT).unwrap();
                 let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
 
+                let main_image = image::elf::ElfExec::new(phdr_addr, phnum as usize);
+                println!("Main Image:\n  {:#?}", &main_image);
+                /*
                 let addr = phdr_addr as *const program_header::ProgramHeader;
                 let phdrs = program_header::to_phdr_array(addr, phnum as usize);
                 println!("Program Headers: {:#?}", &phdrs);
@@ -98,7 +97,8 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
                     }
                 }
                 println!("load bias: {:x} base: {:x}", load_bias, base);
-
+                 */
+                /*
                 if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
                     println!("_DYNAMIC: {:#?}", dynamic);
                     let strtab = dyn::get_strtab(load_bias, dynamic);
@@ -107,7 +107,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
                 } else {
                     //            println!("<dryad> NO DYNAMIC for {}", *block.argv);
                 }
-            }
+                 */
             
             // commenting _exit will successfully
             // tranfer control (in my single test case ;))
