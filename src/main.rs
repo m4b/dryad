@@ -118,6 +118,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
             entry
         },
         Err (msg) => {
+            // relocating self failed somehow; we write the error message and exit
             unsafe { write(&msg); }
             _exit(1);
             0
