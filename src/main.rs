@@ -77,9 +77,10 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
             // TODO:
             // * image::elf::new(<stuff>)
             // * dryad::link(image)
+            let name = utils::as_str(block.argv[0]);
             let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
             let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
-            let main_image = image::elf::ElfExec::new(phdr_addr, phnum as usize);
+            let main_image = image::elf::ElfExec::new(name, phdr_addr, phnum as usize);
             println!("Main Image:\n  {:#?}", &main_image);
 
             println!("{:?}", dryad.link(main_image));

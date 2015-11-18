@@ -172,6 +172,25 @@ pub fn as_str<'a>(cs: *const u8) -> &'a str {
     }
 }
 
+pub fn str_at<'a>(cs: *const u8, offset: isize) -> &'a str {
+    if cs.is_null() {
+        ""
+    }else {
+        let mut i = 0;
+        unsafe {
+            let ptr = cs.offset(offset);
+            let mut c = *ptr;
+            while c != 0 {
+                i += 1;
+                c = *ptr.offset(i);
+            }
+            let slice = slice::from_raw_parts(ptr, i as usize);
+            str::from_utf8(slice).unwrap()
+        }
+    }
+}
+
+
 pub unsafe extern fn write_chars_at(cs: *const u8) {
     write(as_str(cs));
 }

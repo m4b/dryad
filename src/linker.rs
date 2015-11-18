@@ -5,10 +5,13 @@ use std::fmt;
 use binary::elf::header;
 use binary::elf::program_header;
 use binary::elf::dyn;
+use binary::elf::sym;
+use binary::elf::rela;
 
 use kernel_block;
 use image::elf::ElfExec;
 
+use utils::*;
 use relocate;
 
 pub struct Linker<'a> {
@@ -20,6 +23,8 @@ pub struct Linker<'a> {
     working_set: Box<HashMap<String, isize>>,
 }
 
+// TODO: add needed vector
+// TODO: add symtab &'a [Sym] instead of u64 ?
 struct LinkInfo {
     pub rela:u64,
     pub relasz:u64,
@@ -75,7 +80,7 @@ fn prelink(bias: u64, dynamic: &[dyn::Dyn]) -> LinkInfo {
     let mut fini = 0;
     for dyn in dynamic {
         match dyn.d_tag {
-            dyn::DT_RELA => rela = dyn.d_val + bias,
+            dyn::DT_RELA => rela = dyn.d_val + bias, // .rela.dyn
             dyn::DT_RELASZ => relasz = dyn.d_val,
             dyn::DT_RELAENT => relaent = dyn.d_val,
             dyn::DT_RELACOUNT => relacount = dyn.d_val,
@@ -88,7 +93,7 @@ fn prelink(bias: u64, dynamic: &[dyn::Dyn]) -> LinkInfo {
             dyn::DT_PLTGOT => pltgot = dyn.d_val + bias,
             dyn::DT_PLTRELSZ => pltrelsz = dyn.d_val,
             dyn::DT_PLTREL => pltrel = dyn.d_val,
-            dyn::DT_JMPREL => jmprel = dyn.d_val + bias,
+            dyn::DT_JMPREL => jmprel = dyn.d_val + bias, // .rela.plt
             dyn::DT_VERNEED => verneed = dyn.d_val + bias,
             dyn::DT_VERNEEDNUM => verneednum = dyn.d_val,
             dyn::DT_VERSYM => versym = dyn.d_val + bias,
@@ -146,6 +151,24 @@ impl fmt::Debug for LinkInfo {
     }
 }
 
+// private linker relocation function; assumes dryad _only_
+// contains X86_64_RELATIVE relocations, which should be true
+fn relocate_linker(bias: u64, relas: &[rela::Elf64_Rela]) {
+    for rela in relas {
+        let reloc = rela.r_offset + bias;
+        match rela::r_type(rela.r_info) {
+            rela::R_X86_64_RELATIVE => {
+                let addr = reloc as *mut u64;
+                // set the relocations address to the load bias + the addend
+                unsafe {
+                    *addr = (rela.r_addend + bias as i64) as u64;
+                }
+            },
+            _ => ()
+        }
+    }
+}
+
 // this comes from musl
 extern {
     fn __init_tls(aux: *const u64); // pointer to aux vector indexed by AT_<TYPE> that musl likes
@@ -161,7 +184,7 @@ impl<'a> Linker<'a> {
 
             if let Some(dynamic) = dyn::get_dynamic_array(load_bias, &phdrs) {
                 let relocations = relocate::get_relocations(load_bias, &dynamic);
-                relocate::relocate(load_bias, &relocations);
+                relocate_linker(load_bias, &relocations);
                 // dryad has successfully relocated itself; time to init tls
                 __init_tls(block.get_aux().as_ptr()); // this might not be safe yet because vec allocates
                 
@@ -183,9 +206,21 @@ impl<'a> Linker<'a> {
         if let Some(dynamic) = image.dynamic {
             let link_info = prelink(image.load_bias, dynamic);
             println!("LinkInfo:\n  {:#?}", &link_info);
+            let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // i don't know if this is always valid; but rdr has been doing it and scans every linux shared object binary without issue...
+            let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
+            let strtab = link_info.strtab as *const u8;
+            println!("Symtab:\n {:#?}", &symtab);
+
+            for sym in symtab {
+                let name = str_at(strtab, sym.st_name as isize);
+                println!("Name: {}", &name);
+            }
+            
+            // (r.r_offset + load_bias)
+            
             Ok(())
         } else {
-            Err(format!("<dryad> Main executable {} contains no _DYNAMIC", "TODO ADD EXE image.name"))
+            Err(format!("<dryad> Error: {} contains no _DYNAMIC", image.name))
         }
     }
 

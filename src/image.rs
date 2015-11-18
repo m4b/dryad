@@ -2,13 +2,14 @@ pub mod elf {
 
     use std::fmt;
     
-    use binary::elf::header::Header;
+//    use binary::elf::header::Header;
     use binary::elf::program_header;
     use binary::elf::program_header::ProgramHeader;
     use binary::elf::dyn;
     use binary::elf::dyn::Dyn;
 
-    pub struct ElfExec<'a> {
+    pub struct ElfExec<'a, 'b> {
+        pub name: &'b str,
         pub base: u64,
         pub load_bias: u64,
         pub phdrs: &'a[ProgramHeader],
@@ -20,8 +21,8 @@ pub mod elf {
         pub dynamic: &'a[Dyn],
     }
 
-    impl<'a> ElfExec<'a> {
-        pub fn new<'b> (phdr_addr: u64, phnum: usize) -> ElfExec<'b> {
+    impl<'a, 'a2> ElfExec<'a, 'a2> {
+        pub fn new<'b, 'c> (name: &'c str, phdr_addr: u64, phnum: usize) -> ElfExec<'b, 'c> {
             unsafe {
                 let addr = phdr_addr as *const ProgramHeader;
                 let phdrs = program_header::to_phdr_array(addr, phnum);
@@ -42,6 +43,7 @@ pub mod elf {
                  */
                 
                 ElfExec {
+                    name: name,
                     base: base,
                     load_bias: load_bias,
                     phdrs: phdrs,
@@ -51,10 +53,10 @@ pub mod elf {
         }
     }
 
-    impl<'a> fmt::Debug for ElfExec<'a> {
+    impl<'a, 'b> fmt::Debug for ElfExec<'a, 'b> {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}",
-                   self.base, self.load_bias, self.phdrs, self.dynamic)
+            write!(f, "name: {} base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}",
+                   self.name, self.base, self.load_bias, self.phdrs, self.dynamic)
         }
     }
 }

@@ -4,8 +4,10 @@ use std::slice;
 
 //use utils::*;
 use binary::elf::rela;
+use binary::elf::sym;
 use binary::elf::dyn;
 
+// TODO: remove the load bias, or this function altogether
 pub unsafe fn get_relocations(bias: u64, dynamic: &[dyn::Dyn]) -> &[rela::Elf64_Rela] {
     let mut rela = 0;
     let mut relasz = 0;
@@ -25,11 +27,15 @@ pub unsafe fn get_relocations(bias: u64, dynamic: &[dyn::Dyn]) -> &[rela::Elf64_
     slice::from_raw_parts(rela as *const rela::Elf64_Rela, count)
 }
 
-pub unsafe fn relocate(bias:u64, relas: &[rela::Elf64_Rela]) {
+pub unsafe fn relocate(bias:u64, relas: &[rela::Elf64_Rela], symtab: &[sym::Sym]) {
     for rela in relas {
-        match rela::r_type(rela.r_info) {
+        let typ = rela::r_type(rela.r_info);
+        let sym = rela::r_sym(rela.r_info); // index into the sym table
+        let symbol = &symtab[sym as usize];
+        let reloc = rela.r_offset + bias;
+        match typ {
             rela::R_X86_64_RELATIVE => {
-                let addr = (rela.r_offset + bias) as *mut u64;
+                let addr = reloc as *mut u64;
                 /*
                 write(&"relocating addr 0x");
                 write_u64(rela.r_offset, true);
