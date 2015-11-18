@@ -1,28 +1,4 @@
-#[repr(C)]
-pub struct Elf64_Rela {
-  pub r_offset: u64, /* Address */
-  pub r_info: u64,/* Relocation type and symbol index */
-  pub r_addend:i64,/* Addend */
-}
-
-#[inline]
-pub fn r_sym (info: u64) -> u64 {
-    info >> 32
-}
-
-#[inline]
-pub fn r_type (info: u64) -> u64 {
-    info & 0xffffffff
-}
-
-#[inline]
-pub fn r_info (sym: u64, typ: u64) -> u64 {
-    (sym << 32) + typ
-}
-
-impl Elf64_Rela {
-    
-}
+use std::fmt;
 
 pub const R_X86_64_NONE:u64 = 0; /* No reloc */
 pub const R_X86_64_64:u64 = 1; /* Direct 64 bit  */
@@ -64,3 +40,80 @@ pub const R_X86_64_TLSDESC:u64 = 36; /* TLS descriptor.  */
 pub const R_X86_64_IRELATIVE:u64 = 37; /* Adjust indirectly by program base */
 pub const R_X86_64_RELATIVE64:u64 = 38; /* 64-bit adjust by program base */
 pub const R_X86_64_NUM:u64 = 39; 
+
+#[inline]
+pub fn type_to_str(typ: u64) -> &'static str {
+    match typ {
+        R_X86_64_NONE => "NONE",
+        R_X86_64_64 => "64",
+        R_X86_64_PC32 => "PC32",
+        R_X86_64_GOT32 => "GOT32",
+        R_X86_64_PLT32 => "PLT32",
+        R_X86_64_COPY => "COPY",
+        R_X86_64_GLOB_DAT => "GLOB_DAT",
+        R_X86_64_JUMP_SLOT => "JUMP_SLOT",
+        R_X86_64_RELATIVE => "RELATIVE",
+        R_X86_64_GOTPCREL => "GOTPCREL",
+        R_X86_64_32 => "32",
+        R_X86_64_32S => "32S",
+        R_X86_64_16 => "16",
+        R_X86_64_PC16 => "PC16",
+        R_X86_64_8 => "8",
+        R_X86_64_PC8 => "PC8",
+        R_X86_64_DTPMOD64 => "DTPMOD64",
+        R_X86_64_DTPOFF64 => "DTPOFF64",
+        R_X86_64_TPOFF64 => "TPOFF64",
+        R_X86_64_TLSGD => "TLSGD",
+        R_X86_64_TLSLD => "TLSLD",
+        R_X86_64_DTPOFF32 => "DTPOFF32",
+        R_X86_64_GOTTPOFF => "GOTTPOFF",
+        R_X86_64_TPOFF32 => "TPOFF32",
+        R_X86_64_PC64 => "PC64",
+        R_X86_64_GOTOFF64 => "GOTOFF64",
+        R_X86_64_GOTPC32 => "GOTPC32",
+        R_X86_64_GOT64 => "GOT64",
+        R_X86_64_GOTPCREL64 => "GOTPCREL64",
+        R_X86_64_GOTPC64 => "GOTPC64",
+        R_X86_64_GOTPLT64 => "GOTPLT64",
+        R_X86_64_PLTOFF64 => "PLTOFF64",
+        R_X86_64_SIZE32 => "SIZE32",
+        R_X86_64_SIZE64 => "SIZE64",
+        R_X86_64_GOTPC32_TLSDESC => "GOTPC32_TLSDESC",
+        R_X86_64_TLSDESC_CALL => "TLSDESC_CALL",
+        R_X86_64_TLSDESC => "TLSDESC",
+        R_X86_64_IRELATIVE => "IRELATIVE",
+        R_X86_64_RELATIVE64 => "RELATIVE64",
+        _ => "UNKNOWN_RELA_TYPE"
+    }
+}
+
+#[repr(C)]
+pub struct Rela {
+    pub r_offset: u64, /* Address */
+    pub r_info: u64,/* Relocation type and symbol index */
+    pub r_addend:i64,/* Addend */
+}
+
+#[inline]
+pub fn r_sym (info: u64) -> u64 {
+    info >> 32
+}
+
+#[inline]
+pub fn r_type (info: u64) -> u64 {
+    info & 0xffffffff
+}
+
+#[inline]
+pub fn r_info (sym: u64, typ: u64) -> u64 {
+    (sym << 32) + typ
+}
+
+impl fmt::Debug for Rela {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let sym = r_sym(self.r_info);
+        let typ = r_type(self.r_info);
+        write!(f, "r_offset: {:x} {} @ {} r_addend: {:x}",
+               self.r_offset, type_to_str(typ), sym, self.r_addend)
+    }
+}

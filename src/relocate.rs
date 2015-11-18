@@ -8,7 +8,7 @@ use binary::elf::sym;
 use binary::elf::dyn;
 
 // TODO: remove the load bias, or this function altogether
-pub unsafe fn get_relocations(bias: u64, dynamic: &[dyn::Dyn]) -> &[rela::Elf64_Rela] {
+pub unsafe fn get_relocations(bias: u64, dynamic: &[dyn::Dyn]) -> &[rela::Rela] {
     let mut rela = 0;
     let mut relasz = 0;
     let mut relaent = 0;
@@ -24,10 +24,10 @@ pub unsafe fn get_relocations(bias: u64, dynamic: &[dyn::Dyn]) -> &[rela::Elf64_
     }
     // TODO: validate relaent,
     let count = (relasz / relaent) as usize;
-    slice::from_raw_parts(rela as *const rela::Elf64_Rela, count)
+    slice::from_raw_parts(rela as *const rela::Rela, count)
 }
 
-pub fn relocate(bias:u64, relas: &[rela::Elf64_Rela], symtab: &[sym::Sym], strtab: *const u8) {
+pub fn relocate(bias:u64, relas: &[rela::Rela], symtab: &[sym::Sym], strtab: *const u8) {
     for rela in relas {
         let typ = rela::r_type(rela.r_info);
         let sym = rela::r_sym(rela.r_info); // index into the sym table
@@ -44,6 +44,9 @@ pub fn relocate(bias:u64, relas: &[rela::Elf64_Rela], symtab: &[sym::Sym], strta
             },
             // S
             rela::R_X86_64_GLOB_DAT => {
+                // resolve symbol;
+                // 1. start with exe, then next in needed, then next until symbol found
+                // 2. use gnu_hash with symbol name to get sym info
             },
             // S + A
             rela::R_X86_64_64 => {

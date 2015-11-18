@@ -11,7 +11,6 @@ use binary::elf::rela;
 use kernel_block;
 use image::elf::ElfExec;
 
-use utils::*;
 use relocate;
 
 pub struct Linker<'a> {
@@ -153,7 +152,7 @@ impl fmt::Debug for LinkInfo {
 
 // private linker relocation function; assumes dryad _only_
 // contains X86_64_RELATIVE relocations, which should be true
-fn relocate_linker(bias: u64, relas: &[rela::Elf64_Rela]) {
+fn relocate_linker(bias: u64, relas: &[rela::Rela]) {
     for rela in relas {
         let reloc = rela.r_offset + bias;
         match rela::r_type(rela.r_info) {
@@ -212,16 +211,9 @@ impl<'a> Linker<'a> {
             println!("Symtab:\n  {:#?}", &symtab);
             unsafe {
                 let relas = relocate::get_relocations(image.load_bias, dynamic);
+                println!("Relas:\n  {:#?}", relas);
                 relocate::relocate(image.load_bias, relas, symtab, strtab); }
-            /*
-            for sym in symtab {
-                let name = str_at(strtab, sym.st_name as isize);
-                println!("Name: {}", &name);
-            }
-            */
-            
             // (r.r_offset + load_bias)
-            
             Ok(())
         } else {
             Err(format!("<dryad> Error: {} contains no _DYNAMIC", image.name))
