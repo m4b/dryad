@@ -154,16 +154,12 @@ impl fmt::Debug for LinkInfo {
 // contains X86_64_RELATIVE relocations, which should be true
 fn relocate_linker(bias: u64, relas: &[rela::Rela]) {
     for rela in relas {
-        let reloc = rela.r_offset + bias;
-        match rela::r_type(rela.r_info) {
-            rela::R_X86_64_RELATIVE => {
-                let addr = reloc as *mut u64;
-                // set the relocations address to the load bias + the addend
-                unsafe {
-                    *addr = (rela.r_addend + bias as i64) as u64;
-                }
-            },
-            _ => ()
+        if rela::r_type(rela.r_info) == rela::R_X86_64_RELATIVE {
+            let reloc = (rela.r_offset + bias) as *mut u64;
+            // set the relocations address to the load bias + the addend
+            unsafe {
+                *reloc = (rela.r_addend + bias as i64) as u64;
+            }
         }
     }
 }
