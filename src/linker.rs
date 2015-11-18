@@ -209,12 +209,16 @@ impl<'a> Linker<'a> {
             let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // i don't know if this is always valid; but rdr has been doing it and scans every linux shared object binary without issue...
             let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
             let strtab = link_info.strtab as *const u8;
-            println!("Symtab:\n {:#?}", &symtab);
-
+            println!("Symtab:\n  {:#?}", &symtab);
+            unsafe {
+                let relas = relocate::get_relocations(image.load_bias, dynamic);
+                relocate::relocate(image.load_bias, relas, symtab, strtab); }
+            /*
             for sym in symtab {
                 let name = str_at(strtab, sym.st_name as isize);
                 println!("Name: {}", &name);
             }
+            */
             
             // (r.r_offset + load_bias)
             
