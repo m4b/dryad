@@ -1,14 +1,23 @@
 use std::collections::HashMap;
 use std::boxed::Box;
 use std::fmt;
+//use std::mem;
+//use std::io;
+//use std::prelude::*;
+
+use std::io::Read;
+use std::fs::File;
 
 use binary::elf::header;
 use binary::elf::program_header;
 use binary::elf::dyn;
 use binary::elf::sym;
 use binary::elf::rela;
+use binary::elf::loader;
+use std::os::unix::io::AsRawFd;
 
 use kernel_block;
+use auxv;
 use image::elf::ElfExec;
 
 use relocate;
@@ -16,6 +25,7 @@ use relocate;
 pub struct Linker<'a> {
     pub base: u64,
     pub load_bias: u64,
+    pub vdso: u64,
     pub ehdr: &'a header::Header,
     pub phdrs: &'a [program_header::ProgramHeader],
     pub dynamic: &'a [dyn::Dyn],
@@ -44,6 +54,7 @@ struct LinkInfo {
     pub versym:u64,
     pub init:u64,
     pub fini:u64,
+    pub needed_count:usize,
 }
 
 #[inline]
@@ -77,6 +88,7 @@ fn prelink(bias: u64, dynamic: &[dyn::Dyn]) -> LinkInfo {
     let mut versym = 0;
     let mut init = 0;
     let mut fini = 0;
+    let mut needed_count = 0;
     for dyn in dynamic {
         match dyn.d_tag {
             dyn::DT_RELA => rela = dyn.d_val + bias, // .rela.dyn
@@ -98,6 +110,7 @@ fn prelink(bias: u64, dynamic: &[dyn::Dyn]) -> LinkInfo {
             dyn::DT_VERSYM => versym = dyn.d_val + bias,
             dyn::DT_INIT => init = dyn.d_val + bias,
             dyn::DT_FINI => fini = dyn.d_val + bias,
+            dyn::DT_NEEDED => needed_count += 1,
             _ => ()
         }
     }
@@ -121,6 +134,7 @@ fn prelink(bias: u64, dynamic: &[dyn::Dyn]) -> LinkInfo {
         versym: versym,
         init: init,
         fini: fini,
+        needed_count: needed_count,
     }
 }
 
@@ -158,6 +172,7 @@ fn relocate_linker(bias: u64, relas: &[rela::Rela]) {
             let reloc = (rela.r_offset + bias) as *mut u64;
             // set the relocations address to the load bias + the addend
             unsafe {
+                // TODO: verify casting bias to an i64 is correct
                 *reloc = (rela.r_addend + bias as i64) as u64;
             }
         }
@@ -172,10 +187,11 @@ extern {
 impl<'a> Linker<'a> {
     pub fn new<'b> (base: u64, block: &kernel_block::KernelBlock) -> Result<Linker<'b>, &'static str> {
         unsafe {
-            let ehdr = header::as_header(base as *const u64);
+            let ehdr = header::unsafe_as_header(base as *const u64);
             let addr = (base + ehdr.e_phoff) as *const program_header::ProgramHeader;
             let phdrs = program_header::to_phdr_array(addr, ehdr.e_phnum as usize);
             let load_bias = compute_load_bias(base, &phdrs);
+            let vdso = block.getauxval(auxv::AT_SYSINFO_EHDR).unwrap();
 
             if let Some(dynamic) = dyn::get_dynamic_array(load_bias, &phdrs) {
                 let relocations = relocate::get_relocations(load_bias, &dynamic);
@@ -186,6 +202,7 @@ impl<'a> Linker<'a> {
                 Ok(Linker {
                     base: base,
                     load_bias: load_bias,
+                    vdso: vdso,
                     ehdr: &ehdr,
                     phdrs: &phdrs,
                     dynamic: &dynamic,
@@ -197,23 +214,89 @@ impl<'a> Linker<'a> {
         }
     }
 
+    /// 1. Open fd to shared object - TODO: parse and use /etc/ldconfig.cache
+    /// 2. get program headers
+    /// 3. mmap PT_LOAD phdrs
+    /// 4. compute load bias and base
+    /// 5. get _DYNAMIC
+    /// 6. create SharedObject from above
+    /// 7. add `soname` => `SharedObject` entry in `linker.loaded`
+    fn load(&self, soname: &str) -> Result<(), String> {
+        // TODO: properly open the file using soname -> path with something like `resolve_soname`
+        match File::open("/usr/lib/libc.so.6") {
+            Ok(mut fd) => {
+                println!("Opened: {:?}", fd);
+                let mut elf_header = [0; header::EHDR_SIZE];
+                let _ = fd.read(&mut elf_header);
+
+                let elf_header = header::from_bytes(&elf_header);
+                let mut phdrs: Vec<u8> = vec![0; (elf_header.e_phnum as u64 * program_header::PHDR_SIZE) as usize];
+                let _ = fd.read(phdrs.as_mut_slice());
+                let phdrs = program_header::from_bytes(&phdrs, elf_header.e_phnum as usize);
+                println!("header:\n  {:#?}\nphdrs:\n  {:#?}", &elf_header, &phdrs);
+                loader::load(fd.as_raw_fd(), phdrs);
+                /*
+                for phdr in phdrs {
+                    // this is the first PT_LOAD section
+                    if phdr.p_type == program_header::PT_LOAD {
+                        let mmap_flags = mmap::MAP_PRIVATE | mmap::MAP_ANONYMOUS;
+                        unsafe {
+                            let start = mmap::mmap(0 as *const u64, phdr.p_memsz as usize, mmap::PROT_NONE, mmap_flags, -1, 0);
+                            // `start` used in load bias computation
+                            println!("MMAP start: {:x}", start);
+                        }
+                        break;
+                    }
+                }
+                */
+                /*
+                unsafe {
+                    if let Some(dynamic) = dyn::get_dynamic_array(0, &phdrs) {
+                        println!("LOAD: header:\n  {:#?}\nphdrs:\n  {:#?}\ndynamic:\n  {:#?}", &elf_header, &phdrs, &dynamic);
+                    } else {
+                        return Err(format!("<dryad> no dynamic array found for {}", &soname))
+                    }
+                }
+                 */
+            },
+            Err(e) => return Err(format!("<dryad> could not open {}: err {:?}", &soname, e))
+        }
+        Ok(())
+    }
+
     pub fn link(&self, image: ElfExec) -> Result<(), String> {
         if let Some(dynamic) = image.dynamic {
             let link_info = prelink(image.load_bias, dynamic);
             println!("LinkInfo:\n  {:#?}", &link_info);
-            let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // i don't know if this is always valid; but rdr has been doing it and scans every linux shared object binary without issue...
+            let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // i don't know if this is always valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
             let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
             let strtab = link_info.strtab as *const u8;
             println!("Symtab:\n  {:#?}", &symtab);
+
+            let _ = self.load(image.name);
+
             unsafe {
                 let relas = relocate::get_relocations(image.load_bias, dynamic);
                 println!("Relas:\n  {:#?}", relas);
-                relocate::relocate(image.load_bias, relas, symtab, strtab); }
-            // (r.r_offset + load_bias)
+                relocate::relocate(image.load_bias, relas, symtab, strtab);
+            }
+
             Ok(())
         } else {
             Err(format!("<dryad> Error: {} contains no _DYNAMIC", image.name))
         }
     }
+}
 
+impl<'a> fmt::Debug for Linker<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "base: {:x} load_bias: {:x} vdso: {:x} ehdr: {:#?} phdrs: {:#?} dynamic: {:#?}",
+               self.base,
+               self.load_bias,
+               self.vdso,
+               self.ehdr,
+               self.phdrs,
+               self.dynamic
+               )
+    }
 }

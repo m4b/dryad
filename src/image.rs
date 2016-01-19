@@ -16,9 +16,11 @@ pub mod elf {
         pub dynamic: Option<&'a[Dyn]>,
     }
 
-    pub struct ElfLib<'a> {
+    pub struct SharedObject<'a> {
         pub phdrs: &'a[ProgramHeader],
         pub dynamic: &'a[Dyn],
+        pub base: u64,
+        pub load_bias: u64,
     }
 
     impl<'a, 'a2> ElfExec<'a, 'a2> {
@@ -35,6 +37,7 @@ pub mod elf {
                         break;
                     }
                 }
+                // if base == 0 then no PT_PHDR and we should terminate? or kernel should have noticed this and we needn't bother
 
                 let dynamic = dyn::get_dynamic_array(load_bias, phdrs);
                 /*

@@ -195,3 +195,45 @@ pub unsafe extern fn write_chars_at(cs: *const u8) {
     write(as_str(cs));
 }
 
+pub mod mmap {
+    // from <sys/user.h>
+    /*
+    #define PAGE_SHIFT		12
+    #define PAGE_SIZE		(1UL << PAGE_SHIFT)
+    #define PAGE_MASK		(~(PAGE_SIZE-1))
+     */
+    // from bionic
+    /*
+    // Returns the address of the page containing address 'x'.
+    #define PAGE_START(x) ((x) & PAGE_MASK)
+
+    // Returns the offset of address 'x' in its page.
+    #define PAGE_OFFSET(x) ((x) & ~PAGE_MASK)
+
+    // Returns the address of the next page after address 'x', unless 'x' is
+    // itself at the start of a page.
+    #define PAGE_END(x) PAGE_START((x) + (PAGE_SIZE-1))
+     */
+
+    // TODO: add mmap wrapper
+    // TODO: remove and place in separate file
+    pub const PROT_READ:isize = 0x1; /* Page can be read.  */
+    pub const PROT_WRITE:isize = 0x2; /* Page can be written.  */
+    pub const PROT_EXEC:isize = 0x4; /* Page can be executed.  */
+    pub const PROT_NONE:isize = 0x0; /* Page can not be accessed.  */
+    pub const PROT_GROWSDOWN:isize = 0x01000000; /* Extend change to start of growsdown vma (mprotect only).  */
+    pub const PROT_GROWSUP:isize = 0x02000000; /* Extend change to start of growsup vma (mprotect only).  */
+
+    /* Sharing types (must choose one and only one of these).  */
+    pub const MAP_SHARED:isize = 0x01; /* Share changes.  */
+    pub const MAP_PRIVATE:isize = 0x02; /* Changes are private.  */
+    pub const MAP_ANONYMOUS:isize = 0x20; // just guessing, this is wrapped in a ifdef with __MAP_ANONYMOUS as the value
+    /* Other flags.  */
+    pub const MAP_FIXED:isize = 0x10; /* Interpret addr exactly.  */
+
+    // from musl libc
+    extern {
+        pub fn mmap(addr: *const u64, len: usize, prot: isize, flags: isize, fildes: isize, off: usize) -> u64;
+    }
+
+}

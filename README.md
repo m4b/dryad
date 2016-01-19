@@ -48,9 +48,11 @@ and then we can discuss it; this way no one's precious time and energy is wasted
 
 # TODO:
 
-1. refactor impls, and directory structure
-3. make unsafe code safer with rust best practices; rust experts definitely needed!
-4. add profiling configs
-5. add tests
-6. implement dynamic linking
-7. x all the things
+1. **MAJOR**: `/etc/ld.so.cache` loader and parser
+2. **MAJOR**: `dlfcn.h` implementation and shared object bindings for runtime dynamic loading support
+3. **MAJOR**: properly init dynamic linker's static musl libc
+4. make unsafe code safer with rust best practices; rust experts definitely needed!
+5. add profiling configs
+6. add tests
+7. implement dynamic linking
+8. x all the things

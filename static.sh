@@ -6,8 +6,6 @@ SONAME=dryad.so.1
 RUSTLIB=$PREFIX/lib/rustlib/x86_64-unknown-linux-musl/lib
 DEPS_STD=
 
-#LIBS=
-
 export LD_LIBRARY_PATH=$PREFIX/lib:$LD_LIBRARY_PATH
 
 clang -c -o start.o src/arch/x86/asm.s

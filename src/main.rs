@@ -2,6 +2,7 @@
 //#![no_std]
 //#![no_builtins]
 #![feature(asm, libc)]
+#![feature(convert)]
 #![no_main]
 
 #![allow(dead_code)]
@@ -73,6 +74,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
     
     match linker::Linker::new(linker_base, &block) {
         Ok (dryad) => {
+            println!("Dryad:\n  {:#?}", &dryad);
             println!("BEGIN EXE LINKING");
             // TODO:
             // * image::elf::new(<stuff>)
