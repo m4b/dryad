@@ -68,6 +68,9 @@ extern {
 pub fn load (fd: RawFd, phdrs: &[program_header::ProgramHeader]) -> Result <(), String> {
     let (start, load_bias) = try!(reserve_address_space(phdrs));
 
+    //TODO: figure out what the file offset, if any, should be
+    let file_offset:usize = 0;
+
     for phdr in phdrs {
 
         if phdr.p_type != program_header::PT_LOAD {
@@ -86,7 +89,7 @@ pub fn load (fd: RawFd, phdrs: &[program_header::ProgramHeader]) -> Result <(), 
         let file_start:u64 = phdr.p_offset;
         let file_end:u64   = file_start + phdr.p_filesz;
 
-        let file_page_start:u64 = page::page_start(file_start);
+        let file_page_start = page::page_start(file_start);
         let file_length:u64 = file_end - file_page_start;
 
         // TODO: add error checking, if file size <= 0, if file_end greater than file_size, etc.
@@ -101,8 +104,8 @@ pub fn load (fd: RawFd, phdrs: &[program_header::ProgramHeader]) -> Result <(), 
                                        file_length as usize,
                                        prot_flags,
                                        mmap_flags,
-                                       -1,
-                                       0);
+                                       fd as isize,
+                                       file_offset + file_page_start as usize);
                 // `start` used in load bias computation
                 println!("MMAP start: {:x} map_failed: {}", start, start == mmap::MAP_FAILED);
 
