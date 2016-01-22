@@ -38,8 +38,11 @@ fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u
                                     mmap_flags,
                                     -1,
                                     0) };
+
     if start == mmap::MAP_FAILED {
+
         Err(format!("<dryad> Failure: anonymous mmap failed for size {:x}", size))
+
     } else {
 
         let load_bias = start - min_vaddr;

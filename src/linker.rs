@@ -16,12 +16,14 @@ use binary::elf::rela;
 use binary::elf::loader;
 use std::os::unix::io::AsRawFd;
 
+use utils::*;
 use kernel_block;
 use auxv;
 use image::elf::ElfExec;
 
 use relocate;
 
+// TODO: add lib vector or lib working_set and lib finished_set
 pub struct Linker<'a> {
     pub base: u64,
     pub load_bias: u64,
@@ -29,12 +31,13 @@ pub struct Linker<'a> {
     pub ehdr: &'a header::Header,
     pub phdrs: &'a [program_header::ProgramHeader],
     pub dynamic: &'a [dyn::Dyn],
+    // why is this a hashmap to isize - remove
     working_set: Box<HashMap<String, isize>>,
 }
 
 // TODO: add needed vector
 // TODO: add symtab &'a [Sym] instead of u64 ?
-struct LinkInfo {
+struct LinkInfo<'a> {
     pub rela:u64,
     pub relasz:u64,
     pub relaent:u64,
@@ -55,6 +58,7 @@ struct LinkInfo {
     pub init:u64,
     pub fini:u64,
     pub needed_count:usize,
+    pub libs: Vec<&'a str>
 }
 
 #[inline]
@@ -68,7 +72,7 @@ fn compute_load_bias(base:u64, phdrs:&[program_header::ProgramHeader]) -> u64 {
 }
 
 #[inline]
-fn prelink(bias: u64, dynamic: &[dyn::Dyn]) -> LinkInfo {
+fn prelink<'a> (bias: u64, dynamic: &'a [dyn::Dyn]) -> LinkInfo<'a> {
     let mut rela = 0;
     let mut relasz = 0;
     let mut relaent = 0;
@@ -89,6 +93,7 @@ fn prelink(bias: u64, dynamic: &[dyn::Dyn]) -> LinkInfo {
     let mut init = 0;
     let mut fini = 0;
     let mut needed_count = 0;
+    let mut needed = vec![0; 20];
     for dyn in dynamic {
         match dyn.d_tag {
             dyn::DT_RELA => rela = dyn.d_val + bias, // .rela.dyn
@@ -110,10 +115,24 @@ fn prelink(bias: u64, dynamic: &[dyn::Dyn]) -> LinkInfo {
             dyn::DT_VERSYM => versym = dyn.d_val + bias,
             dyn::DT_INIT => init = dyn.d_val + bias,
             dyn::DT_FINI => fini = dyn.d_val + bias,
-            dyn::DT_NEEDED => needed_count += 1,
+            dyn::DT_NEEDED => {
+                // this is totally a premature optimization for likely a list of 3-4 libs
+                let len = needed.len();
+                if needed_count >= len {
+                    needed.resize(len * 2, 0);
+                }
+                needed[needed_count] = dyn.d_val;
+                needed_count += 1;
+            },
             _ => ()
         }
     }
+
+    let mut libs:Vec<&str> = Vec::with_capacity(needed_count as usize);
+    for i in 0 .. needed_count as usize {
+        libs.push(str_at(strtab as *const u8, needed[i] as isize));
+    }
+
     LinkInfo {
         rela: rela,
         relasz: relasz,
@@ -135,12 +154,13 @@ fn prelink(bias: u64, dynamic: &[dyn::Dyn]) -> LinkInfo {
         init: init,
         fini: fini,
         needed_count: needed_count,
+        libs: libs
     }
 }
 
-impl fmt::Debug for LinkInfo {
+impl<'a> fmt::Debug for LinkInfo<'a> {
     fn fmt (&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "rela: 0x{:x} relasz: {} relaent: {} relacount: {} gnu_hash: 0x{:x} hash: 0x{:x} strtab: 0x{:x} strsz: {} symtab: 0x{:x} syment: {} pltgot: 0x{:x} pltrelsz: {} pltrel: {} jmprel: 0x{:x} verneed: 0x{:x} verneednum: {} versym: 0x{:x} init: 0x{:x} fini: 0x{:x}",
+        write!(f, "rela: 0x{:x} relasz: {} relaent: {} relacount: {} gnu_hash: 0x{:x} hash: 0x{:x} strtab: 0x{:x} strsz: {} symtab: 0x{:x} syment: {} pltgot: 0x{:x} pltrelsz: {} pltrel: {} jmprel: 0x{:x} verneed: 0x{:x} verneednum: {} versym: 0x{:x} init: 0x{:x} fini: 0x{:x} libs: {:#?}",
                self.rela,
                self.relasz,
                self.relaent,
@@ -159,13 +179,14 @@ impl fmt::Debug for LinkInfo {
                self.verneednum,
                self.versym,
                self.init,
-               self.fini
+               self.fini,
+               self.libs
                )
     }
 }
 
-// private linker relocation function; assumes dryad _only_
-// contains X86_64_RELATIVE relocations, which should be true
+/// private linker relocation function; assumes dryad _only_
+/// contains X86_64_RELATIVE relocations, which should be true
 fn relocate_linker(bias: u64, relas: &[rela::Rela]) {
     for rela in relas {
         if rela::r_type(rela.r_info) == rela::R_X86_64_RELATIVE {
@@ -214,15 +235,17 @@ impl<'a> Linker<'a> {
         }
     }
 
-    /// 1. Open fd to shared object - TODO: parse and use /etc/ldconfig.cache
-    /// 2. get program headers
-    /// 3. mmap PT_LOAD phdrs
-    /// 4. compute load bias and base
-    /// 5. get _DYNAMIC
-    /// 6. create SharedObject from above
+    /// 1. Open fd to shared object ✓ - TODO: parse and use /etc/ldconfig.cache
+    /// 2. get program headers ✓
+    /// 3. mmap PT_LOAD phdrs ✓
+    /// 4. compute load bias and base ✓
+    /// 5. get _DYNAMIC real address from the mmap'd segments
+    /// 6a. create SharedObject from above, by relocating
+    /// 6b. resolve function and PLT; for now, just act like LD_PRELOAD is set
     /// 7. add `soname` => `SharedObject` entry in `linker.loaded`
     fn load(&self, soname: &str) -> Result<(), String> {
         // TODO: properly open the file using soname -> path with something like `resolve_soname`
+        // TODO: if soname ∉ linker.loaded { then do this }
         match File::open("/usr/lib/libc.so.6") {
             Ok(mut fd) => {
                 println!("Opened: {:?}", fd);
@@ -250,6 +273,8 @@ impl<'a> Linker<'a> {
         Ok(())
     }
 
+    /// 1. Get dynamic, symtab, and strtab
+    /// 2. Construct initial lib set from the DT_NEEDED, and DT_NEEDED_SIZE, and go from there
     pub fn link(&self, image: ElfExec) -> Result<(), String> {
         if let Some(dynamic) = image.dynamic {
             let link_info = prelink(image.load_bias, dynamic);
@@ -259,8 +284,11 @@ impl<'a> Linker<'a> {
             let strtab = link_info.strtab as *const u8;
             println!("Symtab:\n  {:#?}", &symtab);
 
+            // TODO: load images shared libraries, not initial exe image (it's already loaded)
+            // i.e., for lib in libs { self.load(lib) }
             try!(self.load(image.name));
 
+            // relocate the executable
             unsafe {
                 let relas = relocate::get_relocations(image.load_bias, dynamic);
                 println!("Relas:\n  {:#?}", relas);
@@ -268,6 +296,7 @@ impl<'a> Linker<'a> {
             }
 
             Ok(())
+
         } else {
             Err(format!("<dryad> Error: {} contains no _DYNAMIC", image.name))
         }
