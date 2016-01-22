@@ -60,7 +60,8 @@ fn pflags_to_prot (x:u32) -> isize {
 
 
 extern {
-    static __errno_location: i32;
+    /// musl #defines erro *(__errno_location()) ... so errno isn't a symbol in the final binary and accesses will segfault us. yay.
+    fn __errno_location() -> *const i32;
 }
 
 
@@ -105,7 +106,7 @@ pub fn load (fd: RawFd, phdrs: &[program_header::ProgramHeader]) -> Result <(), 
                 // `start` used in load bias computation
                 println!("MMAP start: {:x} map_failed: {}", start, start == mmap::MAP_FAILED);
 
-                println!("errno: {:x}", __errno_location);
+                println!("errno: {:x}", *__errno_location());
             }
         }
 
