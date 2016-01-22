@@ -64,8 +64,7 @@ extern {
     fn __errno_location() -> *const i32;
 }
 
-
-pub fn load (fd: RawFd, phdrs: &[program_header::ProgramHeader]) -> Result <(), String> {
+pub fn load (soname: &str, fd: RawFd, phdrs: &[program_header::ProgramHeader]) -> Result <(), String> {
     let (start, load_bias) = try!(reserve_address_space(phdrs));
 
     //TODO: figure out what the file offset, if any, should be
@@ -106,10 +105,9 @@ pub fn load (fd: RawFd, phdrs: &[program_header::ProgramHeader]) -> Result <(), 
                                        mmap_flags,
                                        fd as isize,
                                        file_offset + file_page_start as usize);
-                // `start` used in load bias computation
-                println!("MMAP start: {:x} map_failed: {}", start, start == mmap::MAP_FAILED);
-
-                println!("errno: {:x}", *__errno_location());
+                if start == mmap::MAP_FAILED {
+                    return Err(format!("<dryad> loading phdrs for {} failed with errno {}, aborting execution", &soname, *__errno_location()));
+                }
             }
         }
 

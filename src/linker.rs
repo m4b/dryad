@@ -234,7 +234,7 @@ impl<'a> Linker<'a> {
                 let _ = fd.read(phdrs.as_mut_slice());
                 let phdrs = program_header::from_bytes(&phdrs, elf_header.e_phnum as usize);
                 println!("header:\n  {:#?}\nphdrs:\n  {:#?}", &elf_header, &phdrs);
-                loader::load(fd.as_raw_fd(), phdrs);
+                try!(loader::load(soname, fd.as_raw_fd(), phdrs));
                 /*
                 unsafe {
                     if let Some(dynamic) = dyn::get_dynamic_array(0, &phdrs) {
@@ -259,7 +259,7 @@ impl<'a> Linker<'a> {
             let strtab = link_info.strtab as *const u8;
             println!("Symtab:\n  {:#?}", &symtab);
 
-            let _ = self.load(image.name);
+            try!(self.load(image.name));
 
             unsafe {
                 let relas = relocate::get_relocations(image.load_bias, dynamic);
