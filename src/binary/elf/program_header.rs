@@ -25,6 +25,15 @@ pub const PT_HIOS:u32 = 0x6fffffff;
 pub const PT_LOPROC:u32 = 0x70000000;
 pub const PT_HIPROC:u32 = 0x7fffffff;
 
+/// Segment is executable
+pub const PF_X:u32 = 1 << 0;
+
+/// Segment is writable
+pub const PF_W:u32 = 1 << 1;
+
+/// Segment is readable
+pub const PF_R:u32 = 1 << 2;
+
 #[repr(C)]
 pub struct ProgramHeader {
     pub p_type: u32,

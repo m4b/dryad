@@ -236,20 +236,6 @@ impl<'a> Linker<'a> {
                 println!("header:\n  {:#?}\nphdrs:\n  {:#?}", &elf_header, &phdrs);
                 loader::load(fd.as_raw_fd(), phdrs);
                 /*
-                for phdr in phdrs {
-                    // this is the first PT_LOAD section
-                    if phdr.p_type == program_header::PT_LOAD {
-                        let mmap_flags = mmap::MAP_PRIVATE | mmap::MAP_ANONYMOUS;
-                        unsafe {
-                            let start = mmap::mmap(0 as *const u64, phdr.p_memsz as usize, mmap::PROT_NONE, mmap_flags, -1, 0);
-                            // `start` used in load bias computation
-                            println!("MMAP start: {:x}", start);
-                        }
-                        break;
-                    }
-                }
-                */
-                /*
                 unsafe {
                     if let Some(dynamic) = dyn::get_dynamic_array(0, &phdrs) {
                         println!("LOAD: header:\n  {:#?}\nphdrs:\n  {:#?}\ndynamic:\n  {:#?}", &elf_header, &phdrs, &dynamic);
