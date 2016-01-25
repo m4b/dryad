@@ -1,6 +1,8 @@
 // leave this to allow easy breakpoints on assembly wrappers like _write for now
 #![allow(private_no_mangle_fns)]
 
+use std::os::raw::{c_int};
+
 use std::str;
 use std::slice;
 
@@ -239,7 +241,6 @@ pub mod mmap {
     pub const MAP_FAILED:u64 = !0;
 
     // from musl libc
-    use std::os::raw::{c_int};
     extern {
         pub fn mmap(addr: *const u64, len: usize, prot: isize, flags: c_int, fildes: c_int, off: usize) -> u64;
     }
