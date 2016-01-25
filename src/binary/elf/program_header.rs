@@ -35,6 +35,7 @@ pub const PF_W:u32 = 1 << 1;
 pub const PF_R:u32 = 1 << 2;
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct ProgramHeader {
     pub p_type: u32,
     pub p_flags: u32,

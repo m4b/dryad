@@ -13,13 +13,13 @@ pub struct Executable<'a, 'b> {
     pub dynamic: Option<&'a[Dyn]>,
 }
 
-pub struct SharedObject<'a, 'b> {
-    pub name: &'b str,
-    pub phdrs: &'a[ProgramHeader],
-    pub dynamic: &'a[Dyn],
+pub struct SharedObject {
+    pub name: String,
+    pub phdrs: Vec<ProgramHeader>,
+    pub dynamic: Vec<Dyn>,
     pub base: u64,
     pub load_bias: u64,
-    pub libs: &'a[&'a str],
+    pub libs: Vec<String>,
 }
 
 impl<'a, 'a2> Executable<'a, 'a2> {

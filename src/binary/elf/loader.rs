@@ -1,9 +1,43 @@
-use std::os::unix::io::RawFd;
+use std::fs::File;
+use std::io::Read;
+use std::os::unix::io::AsRawFd;
 use std::os::raw::{c_int};
 
 use utils::mmap;
 use utils::page;
+use binary::elf::header;
 use binary::elf::program_header;
+use binary::elf::dyn;
+use binary::elf::image::SharedObject;
+
+// TODO: add safe adds, there's ridiculous amounts of casting everywhere
+fn map_fragment(fd: &File, base:u64, elf:u64, size:u64) -> Result<(u64, usize, *const u64), String> {
+    let offset = base + elf;
+    let page_min = page::page_start(offset);
+    let end_offset = offset + size;
+    let end_offset = end_offset + page::page_offset(offset);
+
+    let map_size:usize = (end_offset - page_min) as usize;
+    if (map_size as u64) >= size {
+        return Err (format!("<dryad> Error: file {:#?} has map_size >= size, aborting", fd))
+    }
+
+    let map_start = unsafe {
+        mmap::mmap(0 as *const u64,
+                   map_size,
+                   mmap::PROT_READ,
+                   mmap::MAP_PRIVATE as c_int,
+                   fd.as_raw_fd() as c_int,
+                   page_min as usize)
+    };
+
+    if map_start == mmap::MAP_FAILED {
+        return Err (format!("<dryad> Error: map failed for {:#?}, aborting", fd))
+    }
+
+    let data = (map_start + page::page_offset(offset)) as *const u64;
+    Ok ((map_start, map_size, data))
+}
 
 fn load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
     let mut max_vaddr = 0;
@@ -62,18 +96,32 @@ fn pflags_to_prot (x:u32) -> isize {
     (if x & PF_W == PF_W { mmap::PROT_WRITE } else { 0 })
 }
 
-
 extern {
     /// musl #defines erro *(__errno_location()) ... so errno isn't a symbol in the final binary and accesses will segfault us. yay.
     fn __errno_location() -> *const i32;
 }
 
-pub fn load (soname: &str, fd: RawFd, phdrs: &[program_header::ProgramHeader]) -> Result <(), String> {
-    let (start, load_bias) = try!(reserve_address_space(phdrs));
+/// Loads an ELF binary from the given fd, mmaps its contents, and returns a SharedObject
+/// TODO: probably just move this function to image and use it as the impl
+pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject, String> {
+
+    // 1. Suck up the elf header and construct the program headers
+    let mut elf_header = [0; header::EHDR_SIZE];
+    let _ = fd.read(&mut elf_header);
+
+    let elf_header = header::from_bytes(&elf_header);
+    let mut phdrs: Vec<u8> = vec![0; (elf_header.e_phnum as u64 * program_header::PHDR_SIZE) as usize];
+    let _ = fd.read(phdrs.as_mut_slice());
+    let phdrs = program_header::from_bytes(&phdrs, elf_header.e_phnum as usize);
+    println!("header:\n  {:#?}\nphdrs:\n  {:#?}", &elf_header, &phdrs);
+
+    // 2. Reserve address space with anon mmap
+    let (start, load_bias) = try!(reserve_address_space(&phdrs));
 
     //TODO: figure out what the file offset, if any, should be
     let file_offset:usize = 0;
 
+    // 3. mmap those program headers
     for phdr in phdrs {
 
         if phdr.p_type != program_header::PT_LOAD {
@@ -86,7 +134,7 @@ pub fn load (soname: &str, fd: RawFd, phdrs: &[program_header::ProgramHeader]) -
         let seg_page_start:u64 = page::page_start(seg_start);
         let seg_page_end:u64   = page::page_start(seg_end);
 
-        let mut seg_file_end:u64   = seg_start + phdr.p_filesz;
+        let mut seg_file_end:u64 = seg_start + phdr.p_filesz;
 
         // File offsets.
         let file_start:u64 = phdr.p_offset;
@@ -107,7 +155,7 @@ pub fn load (soname: &str, fd: RawFd, phdrs: &[program_header::ProgramHeader]) -
                                        file_length as usize,
                                        prot_flags,
                                        mmap_flags as c_int,
-                                       fd as c_int,
+                                       fd.as_raw_fd() as c_int,
                                        file_offset + file_page_start as usize);
                 if start == mmap::MAP_FAILED {
                     return Err(format!("<dryad> loading phdrs for {} failed with errno {}, aborting execution", &soname, *__errno_location()))
@@ -118,5 +166,23 @@ pub fn load (soname: &str, fd: RawFd, phdrs: &[program_header::ProgramHeader]) -
         seg_file_end = page::page_end(seg_file_end);
     }
 
-    Ok(())
+    if let Some(dynamic) = unsafe { dyn::get_dynamic_array(load_bias, &phdrs) } {
+        println!("LOAD: header:\n  {:#?}\nphdrs:\n  {:#?}\ndynamic:\n  {:#?}", &elf_header, &phdrs, &dynamic);
+
+        // TODO: get libs
+
+        let shared_object = SharedObject {
+            name: soname.to_string(),
+            phdrs: phdrs.to_owned(),
+            dynamic: dynamic.to_owned(),
+            base: 0,
+            load_bias: load_bias,
+            libs: vec!["Hi".to_string()],
+        };
+
+        Ok(shared_object)
+
+    } else {
+        Err(format!("<dryad> no dynamic array found for {}", &soname))
+    }
 }

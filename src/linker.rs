@@ -5,7 +5,6 @@ use std::fmt;
 //use std::io;
 //use std::prelude::*;
 
-use std::io::Read;
 use std::fs::File;
 
 use binary::elf::header;
@@ -15,7 +14,6 @@ use binary::elf::sym;
 use binary::elf::rela;
 use binary::elf::loader;
 use binary::elf::image::{ Executable, SharedObject} ;
-use std::os::unix::io::AsRawFd;
 
 use utils::*;
 use kernel_block;
@@ -303,24 +301,9 @@ impl<'a> Linker<'a> {
         match File::open("/usr/lib/libc.so.6") {
             Ok(mut fd) => {
                 println!("Opened: {:?}", fd);
-                let mut elf_header = [0; header::EHDR_SIZE];
-                let _ = fd.read(&mut elf_header);
 
-                let elf_header = header::from_bytes(&elf_header);
-                let mut phdrs: Vec<u8> = vec![0; (elf_header.e_phnum as u64 * program_header::PHDR_SIZE) as usize];
-                let _ = fd.read(phdrs.as_mut_slice());
-                let phdrs = program_header::from_bytes(&phdrs, elf_header.e_phnum as usize);
-                println!("header:\n  {:#?}\nphdrs:\n  {:#?}", &elf_header, &phdrs);
-                try!(loader::load(soname, fd.as_raw_fd(), phdrs));
-                /*
-                unsafe {
-                    if let Some(dynamic) = dyn::get_dynamic_array(0, &phdrs) {
-                        println!("LOAD: header:\n  {:#?}\nphdrs:\n  {:#?}\ndynamic:\n  {:#?}", &elf_header, &phdrs, &dynamic);
-                    } else {
-                        return Err(format!("<dryad> no dynamic array found for {}", &soname))
-                    }
-                }
-                 */
+                let shared_object = try!(loader::load(soname, &mut fd));
+
             },
             Err(e) => return Err(format!("<dryad> could not open {}: err {:?}", &soname, e))
         }
