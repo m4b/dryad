@@ -31,16 +31,18 @@ extern "C" {
 }
 
 extern {
-    /// elf abi requires `_start`; this must be in assembly because we need
+    /// ELF abi requires `_start`; this must be in assembly because we need
     /// the raw stack pointer as the argument to `_dryad_init`;
     /// i.e., kernel calls symbol `_start` on dynamic linker with the kernel argument block, etc.,
-    /// which in our case then calls _back_ into `dryad_init`
+    /// which in our case then calls _back_ into `dryad_init` with the pointer to the raw arguments that form the kernel block
+    /// see `arch/x86/asm.s`
     fn _start();
 }
 
 #[no_mangle]
 pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
 
+    // the linker is currently tied to the lifetime of the kernel block
     let block = KernelBlock::new(raw_args);
     unsafe { block.unsafe_print(); }
 
@@ -78,9 +80,10 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
             let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
             let main_image = image::elf::ElfExec::new(name, phdr_addr, phnum as usize);
             println!("Main Image:\n  {:#?}", &main_image);
-
-            println!("<dryad> Final result: {:?}", dryad.link(main_image));
             
+            let link_result = dryad.link_executable(main_image);
+            println!("<dryad> Linking result: {:?}", link_result);
+
             // commenting _exit will successfully
             // tranfer control (in my single test case ;))
             // to the program entry in test/test,

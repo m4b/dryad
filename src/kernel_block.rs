@@ -14,20 +14,20 @@ pub struct KernelBlock<'a>{
 }
 
 impl<'b> KernelBlock<'b> {
-    pub fn getauxval(&self, t:u64) -> Result<u64, ()> {
+    pub fn getauxval(&self, t:u64) -> Option<u64> {
         unsafe {
             let ptr = self.auxv.clone();
             let mut i = 1;
             let mut v = &*ptr;
             while v.a_type != auxv::AT_NULL {
                 if v.a_type == t {
-                    return Ok (v.a_val)
+                    return Some (v.a_val)
                 }
                 v = &*ptr.offset(i);
                 i += 1;
             }
         }
-        Err(())
+        None
     }
 
     pub fn getenv<'a>(&self, name:&'static str) -> Option<&'a str> {

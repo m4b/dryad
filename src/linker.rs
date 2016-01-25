@@ -23,6 +23,55 @@ use image::elf::ElfExec;
 
 use relocate;
 
+struct Config<'a> {
+    bind_now: bool,
+    debug: bool,
+    secure: bool,
+    verbose: bool,
+    trace_loaded_objects: bool,
+    library_path: &'a [&'a str],
+    preload: &'a[&'a str]
+}
+
+impl<'a> Config<'a> {
+    pub fn new<'b> (block: &'b kernel_block::KernelBlock) -> Config<'b> {
+        let bind_now = if let Some (var) = block.getenv("LD_BIND_NOW") {
+            var != "0" && var != "false" } else { false };
+        let debug = if let Some (var) = block.getenv("LD_DEBUG") {
+            var != "0" && var != "false" } else { false };
+        // TODO: check this, I don't believe this is valid
+        let secure = block.getauxval(auxv::AT_SECURE).is_some();
+        let verbose = if let Some (var) = block.getenv("LD_VERBOSE") {
+            var != "0" && var != "false" } else { false };
+        let trace_loaded_objects = if let Some (var) = block.getenv("LD_TRACE_LOADED_OBJECTS") {
+            var != "0" && var != "false" } else { false };
+        Config {
+            bind_now: bind_now,
+            debug: debug,
+            secure: secure,
+            verbose: verbose,
+            trace_loaded_objects: trace_loaded_objects,
+            //TODO: finish path logics
+            library_path: &[],
+            preload: &[],
+        }
+    }
+}
+
+impl<'a> fmt::Debug for Config<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "bind_now: {} debug: {} secure: {} verbose: {} trace_loaded_objects: {} library_path: {:#?} preload: {:#?}",
+               self.bind_now,
+               self.debug,
+               self.secure,
+               self.verbose,
+               self.trace_loaded_objects,
+               self.library_path,
+               self.preload
+               )
+    }
+}
+
 // TODO: add lib vector or lib working_set and lib finished_set
 pub struct Linker<'a> {
     pub base: u64,
@@ -31,6 +80,7 @@ pub struct Linker<'a> {
     pub ehdr: &'a header::Header,
     pub phdrs: &'a [program_header::ProgramHeader],
     pub dynamic: &'a [dyn::Dyn],
+    config: Config<'a>,
     // why is this a hashmap to isize - remove
     working_set: Box<HashMap<String, isize>>,
 }
@@ -129,7 +179,7 @@ fn prelink<'a> (bias: u64, dynamic: &'a [dyn::Dyn]) -> LinkInfo<'a> {
     }
 
     let mut libs:Vec<&str> = Vec::with_capacity(needed_count as usize);
-    for i in 0 .. needed_count as usize {
+    for i in 0..needed_count as usize {
         libs.push(str_at(strtab as *const u8, needed[i] as isize));
     }
 
@@ -208,7 +258,7 @@ extern {
 // TODO:
 // 1. add config logic path based on env variables
 impl<'a> Linker<'a> {
-    pub fn new<'b> (base: u64, block: &kernel_block::KernelBlock) -> Result<Linker<'b>, &'static str> {
+    pub fn new<'b> (base: u64, block: &'b kernel_block::KernelBlock) -> Result<Linker<'b>, &'static str> {
         unsafe {
             let ehdr = header::unsafe_as_header(base as *const u64);
             let addr = (base + ehdr.e_phoff) as *const program_header::ProgramHeader;
@@ -222,8 +272,6 @@ impl<'a> Linker<'a> {
                 // dryad has successfully relocated itself; time to init tls
                 __init_tls(block.get_aux().as_ptr()); // this might not be safe yet because vec allocates
 
-                println!("LD_DEBUG={:#?}", block.getenv(&"LD_DEBUG"));
-                // TODO: add conf private member for preloading, prelinking, printing, etc.
                 Ok(Linker {
                     base: base,
                     load_bias: load_bias,
@@ -231,6 +279,7 @@ impl<'a> Linker<'a> {
                     ehdr: &ehdr,
                     phdrs: &phdrs,
                     dynamic: &dynamic,
+                    config: Config::new(&block),
                     working_set: Box::new(HashMap::new()) // we relocated ourselves so it should be safe to heap allocate
                 })
             } else {
@@ -277,20 +326,24 @@ impl<'a> Linker<'a> {
         Ok(())
     }
 
+    /// Main staging point for linking the main executable
     /// 1. Get dynamic, symtab, and strtab
     /// 2. Construct initial lib set from the DT_NEEDED, and DT_NEEDED_SIZE, and go from there
-    pub fn link(&self, image: ElfExec) -> Result<(), String> {
+    pub fn link_executable(&self, image: ElfExec) -> Result<(), String> {
         if let Some(dynamic) = image.dynamic {
             let link_info = prelink(image.load_bias, dynamic);
             println!("LinkInfo:\n  {:#?}", &link_info);
-            let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // i don't know if this is always valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
+            let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
             let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
             let strtab = link_info.strtab as *const u8;
             println!("Symtab:\n  {:#?}", &symtab);
 
             // TODO: load images shared libraries, not initial exe image (it's already loaded)
-            // i.e., for lib in libs { self.load(lib) }
-            try!(self.load(image.name));
+            for lib in link_info.libs {
+                // shared_object <- load(lib);
+                // if has unloaded lib deps, link(shared_object)
+                try!(self.load(lib));
+            }
 
             // relocate the executable
             unsafe {
@@ -309,13 +362,14 @@ impl<'a> Linker<'a> {
 
 impl<'a> fmt::Debug for Linker<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "base: {:x} load_bias: {:x} vdso: {:x} ehdr: {:#?} phdrs: {:#?} dynamic: {:#?}",
+        write!(f, "base: {:x} load_bias: {:x} vdso: {:x} ehdr: {:#?} phdrs: {:#?} dynamic: {:#?} Config: {:#?}",
                self.base,
                self.load_bias,
                self.vdso,
                self.ehdr,
                self.phdrs,
-               self.dynamic
+               self.dynamic,
+               self.config
                )
     }
 }
