@@ -9,7 +9,7 @@ fn load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
     let mut min_vaddr = 0;
     for phdr in phdrs {
         if phdr.p_type != program_header::PT_LOAD {
-            continue;
+            continue
         }
 
         if phdr.p_vaddr < min_vaddr {
@@ -24,7 +24,7 @@ fn load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
     min_vaddr = page::page_start(min_vaddr);
     max_vaddr = page::page_end(max_vaddr);
     println!("size: {:x} min_vaddr: {:x} max_vaddr: {:x}", max_vaddr - min_vaddr, min_vaddr, max_vaddr);
-    return ((max_vaddr - min_vaddr) as usize, min_vaddr, max_vaddr);
+    ((max_vaddr - min_vaddr) as usize, min_vaddr, max_vaddr)
 }
 
 fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u64, u64), String> {
@@ -109,7 +109,7 @@ pub fn load (soname: &str, fd: RawFd, phdrs: &[program_header::ProgramHeader]) -
                                        fd as isize,
                                        file_offset + file_page_start as usize);
                 if start == mmap::MAP_FAILED {
-                    return Err(format!("<dryad> loading phdrs for {} failed with errno {}, aborting execution", &soname, *__errno_location()));
+                    return Err(format!("<dryad> loading phdrs for {} failed with errno {}, aborting execution", &soname, *__errno_location()))
                 }
             }
         }
