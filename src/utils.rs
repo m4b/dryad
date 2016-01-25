@@ -239,8 +239,9 @@ pub mod mmap {
     pub const MAP_FAILED:u64 = !0;
 
     // from musl libc
+    use std::os::raw::{c_int};
     extern {
-        pub fn mmap(addr: *const u64, len: usize, prot: isize, flags: isize, fildes: isize, off: usize) -> u64;
+        pub fn mmap(addr: *const u64, len: usize, prot: isize, flags: c_int, fildes: c_int, off: usize) -> u64;
     }
 
 }

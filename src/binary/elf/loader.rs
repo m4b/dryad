@@ -1,8 +1,11 @@
 use std::os::unix::io::RawFd;
+use std::os::raw::{c_int};
 
 use utils::mmap;
 use utils::page;
 use binary::elf::program_header;
+
+
 
 fn load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
     let mut max_vaddr = 0;
@@ -35,7 +38,7 @@ fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u
     let start = unsafe { mmap::mmap(0 as *const u64,
                                     size,
                                     mmap::PROT_NONE,
-                                    mmap_flags,
+                                    mmap_flags as c_int,
                                     -1,
                                     0) };
 
@@ -76,7 +79,7 @@ pub fn load (soname: &str, fd: RawFd, phdrs: &[program_header::ProgramHeader]) -
     for phdr in phdrs {
 
         if phdr.p_type != program_header::PT_LOAD {
-            continue;
+            continue
         }
 
         let seg_start:u64 = phdr.p_vaddr + load_bias;
@@ -105,8 +108,8 @@ pub fn load (soname: &str, fd: RawFd, phdrs: &[program_header::ProgramHeader]) -
                 let start = mmap::mmap(seg_page_start as *const u64,
                                        file_length as usize,
                                        prot_flags,
-                                       mmap_flags,
-                                       fd as isize,
+                                       mmap_flags as c_int,
+                                       fd as c_int,
                                        file_offset + file_page_start as usize);
                 if start == mmap::MAP_FAILED {
                     return Err(format!("<dryad> loading phdrs for {} failed with errno {}, aborting execution", &soname, *__errno_location()))
