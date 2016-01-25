@@ -1,8 +1,6 @@
 // leave this to allow easy breakpoints on assembly wrappers like _write for now
 #![allow(private_no_mangle_fns)]
 
-use std::os::raw::{c_int};
-
 use std::str;
 use std::slice;
 
@@ -222,6 +220,7 @@ pub mod page {
 }
 
 pub mod mmap {
+    use std::os::raw::{c_int};
 
     pub const PROT_READ:isize = 0x1; /* Page can be read.  */
     pub const PROT_WRITE:isize = 0x2; /* Page can be written.  */

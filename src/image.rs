@@ -2,7 +2,6 @@ pub mod elf {
 
     use std::fmt;
     
-//    use binary::elf::header::Header;
     use binary::elf::program_header;
     use binary::elf::program_header::ProgramHeader;
     use binary::elf::dyn;
@@ -16,11 +15,13 @@ pub mod elf {
         pub dynamic: Option<&'a[Dyn]>,
     }
 
-    pub struct SharedObject<'a> {
+    pub struct SharedObject<'a, 'b> {
+        pub name: &'b str,
         pub phdrs: &'a[ProgramHeader],
         pub dynamic: &'a[Dyn],
         pub base: u64,
         pub load_bias: u64,
+        pub libs: &'a[&'a str],
     }
 
     impl<'a, 'a2> ElfExec<'a, 'a2> {
