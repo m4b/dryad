@@ -36,7 +36,6 @@ extern {
     /// i.e., kernel calls symbol `_start` on dynamic linker with the kernel argument block, etc.,
     /// which in our case then calls _back_ into `dryad_init`
     fn _start();
-    fn printf();
 }
 
 #[no_mangle]
