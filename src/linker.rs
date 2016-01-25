@@ -14,12 +14,13 @@ use binary::elf::dyn;
 use binary::elf::sym;
 use binary::elf::rela;
 use binary::elf::loader;
+use binary::elf::image::{ Executable, SharedObject} ;
 use std::os::unix::io::AsRawFd;
 
 use utils::*;
 use kernel_block;
 use auxv;
-use image::elf::ElfExec;
+
 
 use relocate;
 
@@ -329,7 +330,7 @@ impl<'a> Linker<'a> {
     /// Main staging point for linking the main executable
     /// 1. Get dynamic, symtab, and strtab
     /// 2. Construct initial lib set from the DT_NEEDED, and DT_NEEDED_SIZE, and go from there
-    pub fn link_executable(&self, image: ElfExec) -> Result<(), String> {
+    pub fn link_executable(&self, image: Executable) -> Result<(), String> {
         if let Some(dynamic) = image.dynamic {
             let link_info = prelink(image.load_bias, dynamic);
             println!("LinkInfo:\n  {:#?}", &link_info);
@@ -338,7 +339,6 @@ impl<'a> Linker<'a> {
             let strtab = link_info.strtab as *const u8;
             println!("Symtab:\n  {:#?}", &symtab);
 
-            // TODO: load images shared libraries, not initial exe image (it's already loaded)
             for lib in link_info.libs {
                 // shared_object <- load(lib);
                 // if has unloaded lib deps, link(shared_object)

@@ -5,8 +5,6 @@ use utils::mmap;
 use utils::page;
 use binary::elf::program_header;
 
-
-
 fn load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
     let mut max_vaddr = 0;
     let mut min_vaddr = 0;

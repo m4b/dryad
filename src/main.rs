@@ -11,7 +11,6 @@
 mod auxv;
 mod kernel_block;
 mod utils;
-mod image;
 mod binary;
 mod relocate;
 mod link_map;
@@ -78,7 +77,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
             let name = utils::as_str(block.argv[0]);
             let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
             let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
-            let main_image = image::elf::ElfExec::new(name, phdr_addr, phnum as usize);
+            let main_image = binary::elf::image::Executable::new(name, phdr_addr, phnum as usize);
             println!("Main Image:\n  {:#?}", &main_image);
             
             let link_result = dryad.link_executable(main_image);
