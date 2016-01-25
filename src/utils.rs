@@ -4,6 +4,8 @@
 use std::str;
 use std::slice;
 
+// TODO: make this a mod like asm::
+
 #[no_mangle]
 pub extern fn _exit(code: u64) {
     unsafe {
@@ -52,7 +54,7 @@ macro_rules! debug_write {
 */
 
 /*
-// this is _totally_ broken and is massively sideeffectul and unpredicatable
+// this is _totally_ broken and is massively side-effectful and unpredicatable
 #[no_mangle]
 pub extern fn write(msg: &str) {
     unsafe {

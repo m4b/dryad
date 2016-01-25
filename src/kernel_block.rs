@@ -21,13 +21,25 @@ impl<'b> KernelBlock<'b> {
             let mut v = &*ptr;
             while v.a_type != auxv::AT_NULL {
                 if v.a_type == t {
-                    return Ok (v.a_val);
+                    return Ok (v.a_val)
                 }
                 v = &*ptr.offset(i);
                 i += 1;
             }
         }
         Err(())
+    }
+
+    pub fn getenv<'a>(&self, name:&'static str) -> Option<&'a str> {
+        for i in 0..self.envc - 1 {
+            let evar = as_str(self.env[i as usize]);
+            if evar.starts_with(name) { // perhaps add custom search to check if starts with, then if so, return the chars after the =, for linear return; but probably who cares
+                let idx = evar.find("=").unwrap() + 1; // this unwrap probably safe since it would mean the environment variable wasn't properly constructed
+                let (_, res) = evar.split_at(idx as usize);
+                return Some (res)
+            }
+        }
+        None
     }
 
     // TODO: add auxc and make auxv a slice of auxv_t

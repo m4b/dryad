@@ -1,11 +1,10 @@
 //#![feature(no_std, lang_items, asm, core, core_str_ext)]
 //#![no_std]
-//#![no_builtins]
 #![feature(asm, libc)]
 #![feature(convert)]
 #![no_main]
 
-#![allow(dead_code)]
+#![allow(dead_code)] // yells about consts otherwise
 #![allow(unused_variables)]
 
 //mod llvm_symbols;
@@ -20,23 +19,22 @@ mod linker;
 
 use kernel_block::KernelBlock;
 use utils::*;
-//use binary::elf::dyn;
-//use binary::elf::program_header;
-//use binary::elf::rela;
 
 extern crate libc;
 
+// below is gcc attrs for this function...
 //extern "C"
 //void __attribute__((noinline)) __attribute__((visibility("default")))
-
 // unused; someone figure out how to get gdb working when running as a dyld
 extern "C" {
     fn rtld_db_dlactivity();
 }
 
-// elf abi requires _start; this must be in assembly because we need
-// the raw stack pointer as the argument to _dryad_init
 extern {
+    /// elf abi requires `_start`; this must be in assembly because we need
+    /// the raw stack pointer as the argument to `_dryad_init`;
+    /// i.e., kernel calls symbol `_start` on dynamic linker with the kernel argument block, etc.,
+    /// which in our case then calls _back_ into `dryad_init`
     fn _start();
     fn printf();
 }
@@ -69,51 +67,20 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
         // > Ho ho.  We are not the program interpreter!  We are the program itself!
         unsafe { write(&"-=|dryad====-\n"); }
         _exit(0);
-        return 0;
+        return 0xd47ad // to make compiler happy
     }
     
     match linker::Linker::new(linker_base, &block) {
         Ok (dryad) => {
             println!("Dryad:\n  {:#?}", &dryad);
             println!("BEGIN EXE LINKING");
-            // TODO:
-            // * image::elf::new(<stuff>)
-            // * dryad::link(image)
             let name = utils::as_str(block.argv[0]);
             let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
             let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
             let main_image = image::elf::ElfExec::new(name, phdr_addr, phnum as usize);
             println!("Main Image:\n  {:#?}", &main_image);
 
-            println!("{:?}", dryad.link(main_image));
-
-//            println!("&printf: {:?}", printf as *const u64);
-            
-            /*
-            let addr = phdr_addr as *const program_header::ProgramHeader;
-            let phdrs = program_header::to_phdr_array(addr, phnum as usize);
-            println!("Program Headers: {:#?}", &phdrs);
-            let mut base = 0;
-            let mut load_bias = 0;
-            for phdr in phdrs {
-                if phdr.p_type == program_header::PT_PHDR {
-                    load_bias = phdr_addr - phdr.p_vaddr;
-                    base = phdr_addr - phdr.p_offset;
-                    break;
-                }
-            }
-            println!("load bias: {:x} base: {:x}", load_bias, base);
-             */
-            /*
-            if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
-                println!("_DYNAMIC: {:#?}", dynamic);
-                let strtab = dyn::get_strtab(load_bias, dynamic);
-                let needed = dyn::get_needed(dynamic, strtab, base, load_bias);
-                println!("Needed: {:#?}", needed);
-            } else {
-                //            println!("<dryad> NO DYNAMIC for {}", *block.argv);
-            }
-             */
+            println!("<dryad> Final result: {:?}", dryad.link(main_image));
             
             // commenting _exit will successfully
             // tranfer control (in my single test case ;))
@@ -127,7 +94,7 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
             // relocating self failed somehow; we write the error message and exit
             unsafe { write(&msg); }
             _exit(1);
-            0
+            0xd47ad
         }
     }
 }

@@ -116,7 +116,7 @@ fn prelink<'a> (bias: u64, dynamic: &'a [dyn::Dyn]) -> LinkInfo<'a> {
             dyn::DT_INIT => init = dyn.d_val + bias,
             dyn::DT_FINI => fini = dyn.d_val + bias,
             dyn::DT_NEEDED => {
-                // this is totally a premature optimization for likely a list of 3-4 libs
+                // this is a _dubiously_ premature optimization for likely a list of 3-4 libs
                 let len = needed.len();
                 if needed_count >= len {
                     needed.resize(len * 2, 0);
@@ -200,11 +200,13 @@ fn relocate_linker(bias: u64, relas: &[rela::Rela]) {
     }
 }
 
-// this comes from musl
 extern {
-    fn __init_tls(aux: *const u64); // pointer to aux vector indexed by AT_<TYPE> that musl likes
+    /// TLS init function with needs a pointer to aux vector indexed by AT_<TYPE> that musl likes
+    fn __init_tls(aux: *const u64);
 }
 
+// TODO:
+// 1. add config logic path based on env variables
 impl<'a> Linker<'a> {
     pub fn new<'b> (base: u64, block: &kernel_block::KernelBlock) -> Result<Linker<'b>, &'static str> {
         unsafe {
@@ -219,7 +221,9 @@ impl<'a> Linker<'a> {
                 relocate_linker(load_bias, &relocations);
                 // dryad has successfully relocated itself; time to init tls
                 __init_tls(block.get_aux().as_ptr()); // this might not be safe yet because vec allocates
-                
+
+                println!("LD_DEBUG={:#?}", block.getenv(&"LD_DEBUG"));
+                // TODO: add conf private member for preloading, prelinking, printing, etc.
                 Ok(Linker {
                     base: base,
                     load_bias: load_bias,
