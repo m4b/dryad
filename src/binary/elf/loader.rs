@@ -30,17 +30,21 @@ fn map_fragment(fd: &File, base: u64, offset: u64, size: u64) -> Result<(u64, us
                                         page_min as usize) };
 
     if map_start == mmap::MAP_FAILED {
-        return Err (format!("<dryad> Error: map failed for {:#?}, aborting", fd))
-    }
 
-    let data = (map_start + page::page_offset(offset)) as *const u64;
-    Ok ((map_start, map_size, data))
+        Err (format!("<dryad> Error: map failed for {:#?}, aborting", fd))
+
+    } else {
+
+        let data = (map_start + page::page_offset(offset)) as *const u64;
+        Ok ((map_start, map_size, data))
+    }
 }
 
 fn compute_load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
     let mut max_vaddr = 0;
     let mut min_vaddr = 0;
     for phdr in phdrs {
+
         if phdr.p_type != program_header::PT_LOAD {
             continue
         }
@@ -111,6 +115,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject, String> {
     // TODO: phdr should be mmapped and not copied?
     let mut phdrs: Vec<u8> = vec![0; (elf_header.e_phnum as u64 * program_header::PHDR_SIZE) as usize];
     let _ = fd.read(phdrs.as_mut_slice());
+    // TODO: ditto, experiment with mmap vs malloc'ing into memory and using vecs
     let phdrs = program_header::from_bytes(&phdrs, elf_header.e_phnum as usize);
     println!("header:\n  {:#?}\nphdrs:\n  {:#?}", &elf_header, &phdrs);
 
@@ -118,9 +123,8 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject, String> {
 
     // this is redundant, use the link info shite
     for phdr in phdrs {
-        
     }
-//    let (dynamic_start, dynamic_size, dynamic_data) = map_fragment(fd,  
+//    let (dynamic_start, dynamic_size, dynamic_data) = map_fragment(fd,
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias) = try!(reserve_address_space(&phdrs));

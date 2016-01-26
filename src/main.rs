@@ -1,7 +1,6 @@
 //#![feature(no_std, lang_items, asm, core, core_str_ext)]
 //#![no_std]
 #![feature(asm, libc)]
-#![feature(convert)]
 #![no_main]
 
 #![allow(dead_code)] // yells about consts otherwise
@@ -49,23 +48,12 @@ pub extern fn _dryad_init (raw_args: *const u64) -> u64 {
     let entry  = block.getauxval(auxv::AT_ENTRY).unwrap();
 
     let start_addr = _start as *const u64 as u64;
-
-    // without this,
-    // following comparison fails for some inexplicable reason... yay for side-effectful printing again
-    unsafe {
-        write(&"start: 0x");
-        write_u64(start_addr, true);
-        write(&" entry: 0x");
-        write_u64(entry, true);
-        write(&"\n");
-    }
-    
     if start_addr == entry {
         // because it's _tradition_
         // (https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
         // line 786:
         // > Ho ho.  We are not the program interpreter!  We are the program itself!
-        unsafe { write(&"-=|dryad====-\n"); }
+        unsafe { write(&"-=|dryad====-\nHo ho.  We are not the program interpreter!  We are the program itself!\n"); }
         _exit(0);
         return 0xd47ad // to make compiler happy
     }

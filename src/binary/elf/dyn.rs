@@ -164,25 +164,13 @@ pub fn get_strtab(bias:u64, dyns: &[Dyn]) -> u64 {
     0
 }
 
-//TODO: remove
-pub fn string_from_strtab<'a> (offset: *const u8) -> &'a str {
-    let mut i = 0;
-    unsafe {
-        while *offset.offset(i) != 0 {
-            i += 1;
-        }
-        let slice = slice::from_raw_parts(offset, i as usize);
-        str::from_utf8(slice).unwrap()
-    }
-}
-
 /// TODO: make sure the bias is used correctly
 /// Gets the needed libraries from the `_DYNAMIC` array, with the str slices lifetime tied to the dynamic arrays lifetime
 pub fn get_needed<'a>(dyns: &'a [Dyn], strtab: u64, bias: u64, count: usize) -> Vec<&'a str> {
     let mut needed = Vec::with_capacity(count);
     for dyn in dyns {
         if dyn.d_tag == DT_NEEDED {
-            let string = string_from_strtab((strtab + dyn.d_val + bias) as *const u8);
+            let string = str_at((strtab + bias) as *const u8, dyn.d_val as isize);
             needed.push(string);
         }
     }

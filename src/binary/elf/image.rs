@@ -7,9 +7,7 @@ use binary::elf::program_header::ProgramHeader;
 use binary::elf::dyn;
 use binary::elf::dyn::Dyn;
 
-// TODO: add needed vector
-// TODO: add symtab &'a [Sym] instead of u64 ?
-pub struct LinkInfo<'a> {
+pub struct LinkInfo {
     pub rela:u64,
     pub relasz:u64,
     pub relaent:u64,
@@ -30,11 +28,10 @@ pub struct LinkInfo<'a> {
     pub init:u64,
     pub fini:u64,
     pub needed_count:usize,
-    pub libs: Vec<&'a str>
 }
 
-impl<'a> LinkInfo<'a> {
-    pub fn new<'b>(bias: u64, dynamic: &'b [dyn::Dyn]) -> LinkInfo<'b> {
+impl LinkInfo {
+    pub fn new(bias: u64, dynamic: &[dyn::Dyn]) -> LinkInfo {
         let mut rela = 0;
         let mut relasz = 0;
         let mut relaent = 0;
@@ -55,7 +52,6 @@ impl<'a> LinkInfo<'a> {
         let mut init = 0;
         let mut fini = 0;
         let mut needed_count = 0;
-        let mut needed = vec![0; 20];
         for dyn in dynamic {
             match dyn.d_tag {
                 dyn::DT_RELA => rela = dyn.d_val + bias, // .rela.dyn
@@ -77,22 +73,9 @@ impl<'a> LinkInfo<'a> {
                 dyn::DT_VERSYM => versym = dyn.d_val + bias,
                 dyn::DT_INIT => init = dyn.d_val + bias,
                 dyn::DT_FINI => fini = dyn.d_val + bias,
-                dyn::DT_NEEDED => {
-                    // this is a _dubiously_ premature optimization for likely a list of 3-4 libs
-                    let len = needed.len();
-                    if needed_count >= len {
-                        needed.resize(len * 2, 0);
-                    }
-                    needed[needed_count] = dyn.d_val;
-                    needed_count += 1;
-                },
+                dyn::DT_NEEDED => needed_count += 1,
                 _ => ()
             }
-        }
-
-        let mut libs:Vec<&str> = Vec::with_capacity(needed_count as usize);
-        for i in 0..needed_count as usize {
-            libs.push(str_at(strtab as *const u8, needed[i] as isize));
         }
 
         LinkInfo {
@@ -116,14 +99,13 @@ impl<'a> LinkInfo<'a> {
             init: init,
             fini: fini,
             needed_count: needed_count,
-            libs: libs
         }
     }
 }
 
-impl<'a> fmt::Debug for LinkInfo<'a> {
+impl fmt::Debug for LinkInfo {
     fn fmt (&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "rela: 0x{:x} relasz: {} relaent: {} relacount: {} gnu_hash: 0x{:x} hash: 0x{:x} strtab: 0x{:x} strsz: {} symtab: 0x{:x} syment: {} pltgot: 0x{:x} pltrelsz: {} pltrel: {} jmprel: 0x{:x} verneed: 0x{:x} verneednum: {} versym: 0x{:x} init: 0x{:x} fini: 0x{:x} libs: {:#?}",
+        write!(f, "rela: 0x{:x} relasz: {} relaent: {} relacount: {} gnu_hash: 0x{:x} hash: 0x{:x} strtab: 0x{:x} strsz: {} symtab: 0x{:x} syment: {} pltgot: 0x{:x} pltrelsz: {} pltrel: {} jmprel: 0x{:x} verneed: 0x{:x} verneednum: {} versym: 0x{:x} init: 0x{:x} fini: 0x{:x} needed_count: {}",
                self.rela,
                self.relasz,
                self.relaent,
@@ -143,7 +125,7 @@ impl<'a> fmt::Debug for LinkInfo<'a> {
                self.versym,
                self.init,
                self.fini,
-               self.libs
+               self.needed_count,
                )
     }
 }
@@ -154,7 +136,8 @@ pub struct Executable<'a, 'b> {
     pub load_bias: u64,
     pub phdrs: &'a[ProgramHeader],
     pub dynamic: &'a[Dyn],
-    pub link_info: LinkInfo<'a>,
+    pub link_info: LinkInfo,
+    pub needed: Vec<&'a str>,
 }
 
 impl<'a, 'a2> Executable<'a, 'a2> {
@@ -175,11 +158,11 @@ impl<'a, 'a2> Executable<'a, 'a2> {
             // if base == 0 then no PT_PHDR and we should terminate? or kernel should have noticed this and we needn't bother
 
             if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
-                let link_info = LinkInfo::new(load_bias, dynamic);
 
+                let link_info = LinkInfo::new(load_bias, dynamic);
+                let needed = dyn::get_needed(dynamic, link_info.strtab, load_bias, link_info.needed_count);
                 /*
                 let strtab = dyn::get_strtab(load_bias, dynamic);
-                let needed = dyn::get_needed(dynamic, strtab, base, load_bias);
                  */
 
                 Ok (Executable {
@@ -189,9 +172,12 @@ impl<'a, 'a2> Executable<'a, 'a2> {
                     phdrs: phdrs,
                     dynamic: dynamic,
                     link_info: link_info,
+                    needed: needed,
                 })
             } else {
+
                 Err (format!("<dryad> Error: executable {} has no _DYNAMIC array", name))
+
             }
         }
     }
@@ -199,8 +185,8 @@ impl<'a, 'a2> Executable<'a, 'a2> {
 
 impl<'a, 'b> fmt::Debug for Executable<'a, 'b> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "name: {} base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  LinkInfo: {:#?}",
-               self.name, self.base, self.load_bias, self.phdrs, self.dynamic, self.link_info)
+        write!(f, "name: {} base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  LinkInfo: {:#?}\n  Needed: {:#?}",
+               self.name, self.base, self.load_bias, self.phdrs, self.dynamic, self.link_info, self.needed)
     }
 }
 

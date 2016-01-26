@@ -18,8 +18,6 @@ use binary::elf::image::{ LinkInfo, Executable, SharedObject} ;
 use utils::*;
 use kernel_block;
 use auxv;
-
-
 use relocate;
 
 struct Config<'a> {
@@ -72,6 +70,7 @@ impl<'a> fmt::Debug for Config<'a> {
 }
 
 // TODO: add lib vector or lib working_set and lib finished_set
+// Change permissions on most of these fields
 pub struct Linker<'a> {
     pub base: u64,
     pub load_bias: u64,
@@ -160,13 +159,15 @@ impl<'a> Linker<'a> {
         // TODO: if soname ∉ linker.loaded { then do this }
         match File::open("/usr/lib/libc.so.6") {
             Ok(mut fd) => {
-                println!("Opened: {:?}", fd);
 
+                println!("Opened: {:?}", fd);
                 let shared_object = try!(loader::load(soname, &mut fd));
 
             },
+
             Err(e) => return Err(format!("<dryad> could not open {}: err {:?}", &soname, e))
         }
+
         Ok(())
     }
 
@@ -174,6 +175,8 @@ impl<'a> Linker<'a> {
     /// 1. Get dynamic, symtab, and strtab
     /// 2. Construct initial lib set from the DT_NEEDED, and DT_NEEDED_SIZE, and go from there
     pub fn link_executable(&self, image: Executable) -> Result<(), String> {
+
+        // TODO: move all this logic into the executable init
         let link_info = image.link_info;
         // println!("LinkInfo:\n  {:#?}", &link_info);
         let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
@@ -181,7 +184,8 @@ impl<'a> Linker<'a> {
         let strtab = link_info.strtab as *const u8;
         println!("Symtab:\n  {:#?}", &symtab);
 
-        for lib in link_info.libs {
+        // TODO: transfer ownership of libs to the linker, so it can be parallelized
+        for lib in image.needed {
             // shared_object <- load(lib);
             // if has unloaded lib deps, link(shared_object)
             try!(self.load(lib));
