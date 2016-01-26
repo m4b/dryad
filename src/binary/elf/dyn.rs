@@ -1,8 +1,13 @@
+use std::fs::File;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom::Start;
 use std::fmt;
 use std::str;
 use std::slice;
 use utils::*;
-use binary::elf::program_header::*;
+use binary::elf::program_header::{ ProgramHeader, PT_DYNAMIC };
+
 
 /*
  CONSTS
@@ -58,6 +63,7 @@ pub const DT_VERDEF:u64 = 0x6ffffffc;
 pub const DT_VERDEFNUM:u64 = 0x6ffffffd;
 pub const DT_VERNEED:u64 = 0x6ffffffe;
 pub const DT_VERNEEDNUM:u64 = 0x6fffffff;
+pub const DT_FLAGS_1:u64 = 0x6ffffffb;
 
 #[repr(C)]
 #[derive(Clone)]
@@ -65,6 +71,8 @@ pub struct Dyn {
     pub d_tag: u64, // Dynamic entry type
     pub d_val: u64, // Integer value
 }
+
+pub const SIZEOF_DYN:usize = 16;
 
 impl Dyn {
     unsafe fn debug_print(&self) {
@@ -77,6 +85,7 @@ impl Dyn {
     }
 }
 
+// TODO: swap out nums with the consts
 #[inline]
 fn tag_to_str(tag:u64) -> &'static str {
     match tag {
@@ -127,6 +136,7 @@ fn tag_to_str(tag:u64) -> &'static str {
         0x6ffffffd => "DT_VERDEFNUM",
         0x6ffffffe => "DT_VERNEED",
         0x6fffffff => "DT_VERNEEDNUM",
+        DT_FLAGS_1 => "DT_FLAGS_1",
         _ => "UNKNOWN_TAG"
     }
 }
@@ -136,6 +146,34 @@ impl fmt::Debug for Dyn {
         write!(f, "d_tag: {} d_val: 0x{:x}", tag_to_str(self.d_tag), self.d_val)
     }
 }
+
+// this is broken, not to mention weirdness on the mut fd
+pub fn from_fd<'a>(mut fd: &File, phdrs: &'a [ProgramHeader]) -> Option<&'a [Dyn]> {
+    for phdr in phdrs {
+        if phdr.p_type == PT_DYNAMIC {
+            let filesz = phdr.p_filesz as usize;
+            let dync = filesz / SIZEOF_DYN;
+            let mut dyns: Vec<u8> = vec![0; filesz];
+            let _ = fd.seek(Start(phdr.p_offset));
+            let _ = fd.read(dyns.as_mut_slice());
+
+            /*
+            let mut idx = 0;
+            while (*(dynp.offset(idx))).d_tag != DT_NULL {
+                idx += 1;
+            }
+            */
+            
+            println!("DYN COUNT: {}", dync);
+            return unsafe { Some(slice::from_raw_parts(dyns.as_ptr() as *const Dyn, dync)) }
+
+
+          //  return Some(slice::from_raw_parts(dynp, size))
+        }
+    }
+    None
+}
+
 
 /// Maybe gets and returns the dynamic array with the same lifetime as the [phdrs], using the provided bias.
 /// If the bias is wrong, it will either segfault or give you incorrect values, beware
@@ -147,7 +185,7 @@ pub unsafe fn get_dynamic_array<'a>(bias:u64, phdrs: &'a [ProgramHeader]) -> Opt
             while (*(dynp.offset(idx))).d_tag != DT_NULL {
                 idx += 1;
             }
-            return Some(slice::from_raw_parts(dynp, idx as usize));
+            return Some(slice::from_raw_parts(dynp, idx as usize))
         }
     }
     None

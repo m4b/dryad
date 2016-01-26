@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::io::AsRawFd;
+use std::slice;
 use std::os::raw::{c_int};
 
 use utils::mmap;
@@ -17,10 +18,12 @@ fn map_fragment(fd: &File, base: u64, offset: u64, size: u64) -> Result<(u64, us
     let end_offset = offset + size;
     let end_offset = end_offset + page::page_offset(offset);
 
-    let map_size:usize = (end_offset - page_min) as usize;
+    let map_size: usize = (end_offset - page_min) as usize;
+    /*
     if map_size as u64 >= size {
         return Err (format!("<dryad> Error: file {:#?} has map_size >= size, aborting", fd))
     }
+    */
 
     let map_start = unsafe { mmap::mmap(0 as *const u64,
                                         map_size,
@@ -120,11 +123,25 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject, String> {
     println!("header:\n  {:#?}\nphdrs:\n  {:#?}", &elf_header, &phdrs);
 
     // 1.5 mmap the dynamic array with the strtab so we can access them and resolve symbol lookups against this library; this will require mmapping the segments, and storing the dynamic array, along with the strtab; or why not just suck them up ourselves into memory and resolve queries against it that way -- probably slower...
-
+    
+//    let dynamic = dyn::from_fd(&mut fd, phdrs);
+//    println!("DYNAMIC: {:#?}", dynamic);
+    
     // this is redundant, use the link info shite
     for phdr in phdrs {
+        if phdr.p_type == program_header::PT_DYNAMIC {
+            let (dynamic_start, dynamic_size, dynamic_data) = try!(map_fragment(fd, 0, phdr.p_offset, phdr.p_filesz));
+            let dync = phdr.p_filesz as usize / dyn::SIZEOF_DYN;
+            let dyns = unsafe { slice::from_raw_parts(dynamic_data as *const dyn::Dyn, dync)} ;
+            println!("{:x} {:#?} {:#?}\nDYNAMIC FROM THING:{:#?}", dynamic_start, dynamic_size, dynamic_data, dyns);
+            
+        }
+        /*
+        if phdr.p_type == program_header::PT_STRTAB {
+            let (strtab_start, strtab_size, strtab_data) = map_fragment(fd, phdr.p_offset, phdr.p_filesz);
+        }
+        */
     }
-//    let (dynamic_start, dynamic_size, dynamic_data) = map_fragment(fd,
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias) = try!(reserve_address_space(&phdrs));
