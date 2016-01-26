@@ -4,6 +4,7 @@ PREFIX=musldist
 LIB=$PREFIX/lib
 SONAME=dryad.so.1
 RUSTLIB=$PREFIX/lib/rustlib/x86_64-unknown-linux-musl/lib
+RUSTHASH=db5a760f
 DEPS_STD=
 
 export LD_LIBRARY_PATH=$PREFIX/lib:$LD_LIBRARY_PATH
@@ -26,6 +27,6 @@ $PREFIX/bin/rustc --target=x86_64-unknown-linux-musl src/main.rs -g -O --emit ob
 #searching /usr/lib/ for __gcc_personality_v0:
 #           122e0 __gcc_personality_v0 (600) -> /usr/lib/libgcc_s.so.1 [libgcc_s.so.1]
 
-ld --gc-sections -I/tmp/$SONAME -lc -L$LIB -soname $SONAME -pie -static -Bsymbolic -nostdlib -shared -e _start -o $SONAME start.o dryad.o $RUSTLIB/libstd-71b07a99.rlib $RUSTLIB/libcore-71b07a99.rlib $RUSTLIB/librand-71b07a99.rlib $RUSTLIB/liballoc-71b07a99.rlib $RUSTLIB/libcollections-71b07a99.rlib $RUSTLIB/librustc_unicode-71b07a99.rlib $RUSTLIB/liballoc_system-71b07a99.rlib $LIB/libresolv.a $LIB/libunwind.a $LIB/libm.a $LIB/libc.a
+ld --gc-sections -I/tmp/$SONAME -lc -L$LIB -soname $SONAME -pie -static -Bsymbolic -nostdlib -shared -e _start -o $SONAME start.o dryad.o "$RUSTLIB/libstd-$RUSTHASH.rlib" "$RUSTLIB/libcore-$RUSTHASH.rlib" "$RUSTLIB/librand-$RUSTHASH.rlib" "$RUSTLIB/liballoc-$RUSTHASH.rlib" "$RUSTLIB/libcollections-$RUSTHASH.rlib" "$RUSTLIB/librustc_unicode-$RUSTHASH.rlib" "$RUSTLIB/liballoc_system-$RUSTHASH.rlib" $LIB/libresolv.a $LIB/libunwind.a $LIB/libm.a $LIB/libc.a
 
 cp $SONAME /tmp/

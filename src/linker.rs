@@ -13,7 +13,7 @@ use binary::elf::dyn;
 use binary::elf::sym;
 use binary::elf::rela;
 use binary::elf::loader;
-use binary::elf::image::{ Executable, SharedObject} ;
+use binary::elf::image::{ LinkInfo, Executable, SharedObject} ;
 
 use utils::*;
 use kernel_block;
@@ -84,32 +84,6 @@ pub struct Linker<'a> {
     working_set: Box<HashMap<String, isize>>,
 }
 
-// TODO: add needed vector
-// TODO: add symtab &'a [Sym] instead of u64 ?
-struct LinkInfo<'a> {
-    pub rela:u64,
-    pub relasz:u64,
-    pub relaent:u64,
-    pub relacount:u64,
-    pub gnu_hash:u64,
-    pub hash:u64,
-    pub strtab:u64,
-    pub strsz:u64,
-    pub symtab:u64,
-    pub syment:u64,
-    pub pltgot:u64,
-    pub pltrelsz:u64,
-    pub pltrel:u64,
-    pub jmprel:u64,
-    pub verneed:u64,
-    pub verneednum:u64,
-    pub versym:u64,
-    pub init:u64,
-    pub fini:u64,
-    pub needed_count:usize,
-    pub libs: Vec<&'a str>
-}
-
 #[inline]
 fn compute_load_bias(base:u64, phdrs:&[program_header::ProgramHeader]) -> u64 {
     for phdr in phdrs {
@@ -118,120 +92,6 @@ fn compute_load_bias(base:u64, phdrs:&[program_header::ProgramHeader]) -> u64 {
         }
     }
     0
-}
-
-#[inline]
-fn prelink<'a> (bias: u64, dynamic: &'a [dyn::Dyn]) -> LinkInfo<'a> {
-    let mut rela = 0;
-    let mut relasz = 0;
-    let mut relaent = 0;
-    let mut relacount = 0;
-    let mut gnu_hash = 0;
-    let mut hash = 0;
-    let mut strtab = 0;
-    let mut strsz = 0;
-    let mut symtab = 0;
-    let mut syment = 0;
-    let mut pltgot = 0;
-    let mut pltrelsz = 0;
-    let mut pltrel = 0;
-    let mut jmprel = 0;
-    let mut verneed = 0;
-    let mut verneednum = 0;
-    let mut versym = 0;
-    let mut init = 0;
-    let mut fini = 0;
-    let mut needed_count = 0;
-    let mut needed = vec![0; 20];
-    for dyn in dynamic {
-        match dyn.d_tag {
-            dyn::DT_RELA => rela = dyn.d_val + bias, // .rela.dyn
-            dyn::DT_RELASZ => relasz = dyn.d_val,
-            dyn::DT_RELAENT => relaent = dyn.d_val,
-            dyn::DT_RELACOUNT => relacount = dyn.d_val,
-            dyn::DT_GNU_HASH => gnu_hash = dyn.d_val + bias,
-            dyn::DT_HASH => hash = dyn.d_val + bias,
-            dyn::DT_STRTAB => strtab = dyn.d_val + bias,
-            dyn::DT_STRSZ => strsz = dyn.d_val,
-            dyn::DT_SYMTAB => symtab = dyn.d_val + bias,
-            dyn::DT_SYMENT => syment = dyn.d_val,
-            dyn::DT_PLTGOT => pltgot = dyn.d_val + bias,
-            dyn::DT_PLTRELSZ => pltrelsz = dyn.d_val,
-            dyn::DT_PLTREL => pltrel = dyn.d_val,
-            dyn::DT_JMPREL => jmprel = dyn.d_val + bias, // .rela.plt
-            dyn::DT_VERNEED => verneed = dyn.d_val + bias,
-            dyn::DT_VERNEEDNUM => verneednum = dyn.d_val,
-            dyn::DT_VERSYM => versym = dyn.d_val + bias,
-            dyn::DT_INIT => init = dyn.d_val + bias,
-            dyn::DT_FINI => fini = dyn.d_val + bias,
-            dyn::DT_NEEDED => {
-                // this is a _dubiously_ premature optimization for likely a list of 3-4 libs
-                let len = needed.len();
-                if needed_count >= len {
-                    needed.resize(len * 2, 0);
-                }
-                needed[needed_count] = dyn.d_val;
-                needed_count += 1;
-            },
-            _ => ()
-        }
-    }
-
-    let mut libs:Vec<&str> = Vec::with_capacity(needed_count as usize);
-    for i in 0..needed_count as usize {
-        libs.push(str_at(strtab as *const u8, needed[i] as isize));
-    }
-
-    LinkInfo {
-        rela: rela,
-        relasz: relasz,
-        relaent: relaent,
-        relacount: relacount,
-        gnu_hash: gnu_hash,
-        hash: hash,
-        strtab: strtab,
-        strsz: strsz,
-        symtab: symtab,
-        syment: syment,
-        pltgot: pltgot,
-        pltrelsz: pltrelsz,
-        pltrel: pltrel,
-        jmprel: jmprel,
-        verneed: verneed,
-        verneednum: verneednum,
-        versym: versym,
-        init: init,
-        fini: fini,
-        needed_count: needed_count,
-        libs: libs
-    }
-}
-
-impl<'a> fmt::Debug for LinkInfo<'a> {
-    fn fmt (&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "rela: 0x{:x} relasz: {} relaent: {} relacount: {} gnu_hash: 0x{:x} hash: 0x{:x} strtab: 0x{:x} strsz: {} symtab: 0x{:x} syment: {} pltgot: 0x{:x} pltrelsz: {} pltrel: {} jmprel: 0x{:x} verneed: 0x{:x} verneednum: {} versym: 0x{:x} init: 0x{:x} fini: 0x{:x} libs: {:#?}",
-               self.rela,
-               self.relasz,
-               self.relaent,
-               self.relacount,
-               self.gnu_hash,
-               self.hash,
-               self.strtab,
-               self.strsz,
-               self.symtab,
-               self.syment,
-               self.pltgot,
-               self.pltrelsz,
-               self.pltrel,
-               self.jmprel,
-               self.verneed,
-               self.verneednum,
-               self.versym,
-               self.init,
-               self.fini,
-               self.libs
-               )
-    }
 }
 
 /// private linker relocation function; assumes dryad _only_
@@ -314,32 +174,27 @@ impl<'a> Linker<'a> {
     /// 1. Get dynamic, symtab, and strtab
     /// 2. Construct initial lib set from the DT_NEEDED, and DT_NEEDED_SIZE, and go from there
     pub fn link_executable(&self, image: Executable) -> Result<(), String> {
-        if let Some(dynamic) = image.dynamic {
-            let link_info = prelink(image.load_bias, dynamic);
-            println!("LinkInfo:\n  {:#?}", &link_info);
-            let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
-            let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
-            let strtab = link_info.strtab as *const u8;
-            println!("Symtab:\n  {:#?}", &symtab);
+        let link_info = image.link_info;
+        // println!("LinkInfo:\n  {:#?}", &link_info);
+        let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
+        let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
+        let strtab = link_info.strtab as *const u8;
+        println!("Symtab:\n  {:#?}", &symtab);
 
-            for lib in link_info.libs {
-                // shared_object <- load(lib);
-                // if has unloaded lib deps, link(shared_object)
-                try!(self.load(lib));
-            }
-
-            // relocate the executable
-            unsafe {
-                let relas = relocate::get_relocations(image.load_bias, dynamic);
-                println!("Relas:\n  {:#?}", relas);
-                relocate::relocate(image.load_bias, relas, symtab, strtab);
-            }
-
-            Ok(())
-
-        } else {
-            Err(format!("<dryad> Error: {} contains no _DYNAMIC", image.name))
+        for lib in link_info.libs {
+            // shared_object <- load(lib);
+            // if has unloaded lib deps, link(shared_object)
+            try!(self.load(lib));
         }
+
+        // relocate the executable
+        unsafe {
+            let relas = relocate::get_relocations(image.load_bias, image.dynamic);
+            println!("Relas:\n  {:#?}", relas);
+            relocate::relocate(image.load_bias, relas, symtab, strtab);
+        }
+
+        Ok(())
     }
 }
 

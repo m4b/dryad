@@ -11,25 +11,23 @@ use binary::elf::dyn;
 use binary::elf::image::SharedObject;
 
 // TODO: add safe adds, there's ridiculous amounts of casting everywhere
-fn map_fragment(fd: &File, base:u64, elf:u64, size:u64) -> Result<(u64, usize, *const u64), String> {
-    let offset = base + elf;
+fn map_fragment(fd: &File, base: u64, offset: u64, size: u64) -> Result<(u64, usize, *const u64), String> {
+    let offset = base + offset;
     let page_min = page::page_start(offset);
     let end_offset = offset + size;
     let end_offset = end_offset + page::page_offset(offset);
 
     let map_size:usize = (end_offset - page_min) as usize;
-    if (map_size as u64) >= size {
+    if map_size as u64 >= size {
         return Err (format!("<dryad> Error: file {:#?} has map_size >= size, aborting", fd))
     }
 
-    let map_start = unsafe {
-        mmap::mmap(0 as *const u64,
-                   map_size,
-                   mmap::PROT_READ,
-                   mmap::MAP_PRIVATE as c_int,
-                   fd.as_raw_fd() as c_int,
-                   page_min as usize)
-    };
+    let map_start = unsafe { mmap::mmap(0 as *const u64,
+                                        map_size,
+                                        mmap::PROT_READ,
+                                        mmap::MAP_PRIVATE as c_int,
+                                        fd.as_raw_fd() as c_int,
+                                        page_min as usize) };
 
     if map_start == mmap::MAP_FAILED {
         return Err (format!("<dryad> Error: map failed for {:#?}, aborting", fd))
@@ -39,7 +37,7 @@ fn map_fragment(fd: &File, base:u64, elf:u64, size:u64) -> Result<(u64, usize, *
     Ok ((map_start, map_size, data))
 }
 
-fn load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
+fn compute_load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
     let mut max_vaddr = 0;
     let mut min_vaddr = 0;
     for phdr in phdrs {
@@ -64,7 +62,7 @@ fn load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
 
 fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u64, u64), String> {
 
-    let (size, min_vaddr, max_vaddr) = load_size(&phdrs);
+    let (size, min_vaddr, max_vaddr) = compute_load_size(&phdrs);
 
     let mmap_flags = mmap::MAP_PRIVATE | mmap::MAP_ANONYMOUS;
     let start = unsafe { mmap::mmap(0 as *const u64,
@@ -110,10 +108,19 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject, String> {
     let _ = fd.read(&mut elf_header);
 
     let elf_header = header::from_bytes(&elf_header);
+    // TODO: phdr should be mmapped and not copied?
     let mut phdrs: Vec<u8> = vec![0; (elf_header.e_phnum as u64 * program_header::PHDR_SIZE) as usize];
     let _ = fd.read(phdrs.as_mut_slice());
     let phdrs = program_header::from_bytes(&phdrs, elf_header.e_phnum as usize);
     println!("header:\n  {:#?}\nphdrs:\n  {:#?}", &elf_header, &phdrs);
+
+    // 1.5 mmap the dynamic array with the strtab so we can access them and resolve symbol lookups against this library; this will require mmapping the segments, and storing the dynamic array, along with the strtab; or why not just suck them up ourselves into memory and resolve queries against it that way -- probably slower...
+
+    // this is redundant, use the link info shite
+    for phdr in phdrs {
+        
+    }
+//    let (dynamic_start, dynamic_size, dynamic_data) = map_fragment(fd,  
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias) = try!(reserve_address_space(&phdrs));
@@ -121,7 +128,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject, String> {
     //TODO: figure out what the file offset, if any, should be
     let file_offset:usize = 0;
 
-    // 3. mmap those program headers
+    // 3. mmap the PT_LOAD program headers
     for phdr in phdrs {
 
         if phdr.p_type != program_header::PT_LOAD {
@@ -166,10 +173,12 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject, String> {
         seg_file_end = page::page_end(seg_file_end);
     }
 
+    // TODO: move this above, for early termination...
+    // 4. load the dynamic array
     if let Some(dynamic) = unsafe { dyn::get_dynamic_array(load_bias, &phdrs) } {
         println!("LOAD: header:\n  {:#?}\nphdrs:\n  {:#?}\ndynamic:\n  {:#?}", &elf_header, &phdrs, &dynamic);
 
-        // TODO: get libs
+        // TODO: get libs dyn::get_needed()
 
         let shared_object = SharedObject {
             name: soname.to_string(),
@@ -177,6 +186,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject, String> {
             dynamic: dynamic.to_owned(),
             base: 0,
             load_bias: load_bias,
+            // TODO: don't forget this
             libs: vec!["Hi".to_string()],
         };
 

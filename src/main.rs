@@ -39,7 +39,7 @@ extern {
 }
 
 #[no_mangle]
-pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
+pub extern fn _dryad_init (raw_args: *const u64) -> u64 {
 
     // the linker is currently tied to the lifetime of the kernel block
     let block = KernelBlock::new(raw_args);
@@ -77,19 +77,22 @@ pub extern fn _dryad_init(raw_args: *const u64) -> u64 {
             let name = utils::as_str(block.argv[0]);
             let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
             let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
-            let main_image = binary::elf::image::Executable::new(name, phdr_addr, phnum as usize);
-            println!("Main Image:\n  {:#?}", &main_image);
-            
-            let link_result = dryad.link_executable(main_image);
-            println!("<dryad> Linking result: {:?}", link_result);
-
-            // commenting _exit will successfully
-            // tranfer control (in my single test case ;))
-            // to the program entry in test/test,
-            // but segfaults when printf is called (obviously)
-            // since we've done no dynamic linking
-            _exit(0);
-            entry
+            match binary::elf::image::Executable::new(name, phdr_addr, phnum as usize) {
+                Ok (main_image) => {
+                    println!("Main Image:\n  {:#?}", &main_image);
+                    
+                    let link_result = dryad.link_executable(main_image);
+                    println!("<dryad> Linking result: {:?}", link_result);
+                    // commenting _exit will successfully
+                    // tranfer control (in my single test case ;))
+                    // to the program entry in test/test,
+                    // but segfaults when printf is called (obviously)
+                    // since we've done no dynamic linking
+                    _exit(0);
+                    entry
+                },
+                Err (msg) => { println!("{}", msg); _exit(1); 0xd47ad }
+            }
         },
         Err (msg) => {
             // relocating self failed somehow; we write the error message and exit

@@ -164,6 +164,7 @@ pub fn get_strtab(bias:u64, dyns: &[Dyn]) -> u64 {
     0
 }
 
+//TODO: remove
 pub fn string_from_strtab<'a> (offset: *const u8) -> &'a str {
     let mut i = 0;
     unsafe {
