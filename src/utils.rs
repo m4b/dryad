@@ -161,8 +161,8 @@ pub fn as_str<'a>(cs: *const u8) -> &'a str {
     if cs.is_null() {
         ""
     }else {
+        let mut i = 0;
         unsafe {
-            let mut i = 0;
             let mut c = *cs;
             while c != 0 {
                 i += 1;

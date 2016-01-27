@@ -68,7 +68,6 @@ pub extern fn _dryad_init (raw_args: *const u64) -> u64 {
             match binary::elf::image::Executable::new(name, phdr_addr, phnum as usize) {
                 Ok (main_image) => {
                     println!("Main Image:\n  {:#?}", &main_image);
-                    
                     let link_result = dryad.link_executable(main_image);
                     println!("<dryad> Linking result: {:?}", link_result);
                     // commenting _exit will successfully
