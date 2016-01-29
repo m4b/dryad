@@ -1,21 +1,24 @@
+// TODO: implement the gnu symbol lookup with bloom filter
+// start linking some symbols!
 use std::collections::HashMap;
 use std::boxed::Box;
 use std::fmt;
+use std::path::Path;
 //use std::mem;
 //use std::io;
 //use std::prelude::*;
 
 use std::fs::File;
 
+use utils::*;
 use binary::elf::header;
 use binary::elf::program_header;
 use binary::elf::dyn;
-use binary::elf::sym;
+//use binary::elf::sym;
 use binary::elf::rela;
 use binary::elf::loader;
-use binary::elf::image::{ LinkInfo, Executable, SharedObject} ;
+use binary::elf::image::{ Executable, SharedObject} ;
 
-use utils::*;
 use kernel_block;
 use auxv;
 use relocate;
@@ -129,7 +132,6 @@ impl<'a> Linker<'a> {
                 relocate_linker(load_bias, &relocations);
                 // dryad has successfully relocated itself; time to init tls
                 __init_tls(block.get_aux().as_ptr()); // this might not be safe yet because vec allocates
-
                 Ok(Linker {
                     base: base,
                     load_bias: load_bias,
@@ -150,18 +152,21 @@ impl<'a> Linker<'a> {
     /// 2. get program headers ✓
     /// 3. mmap PT_LOAD phdrs ✓
     /// 4. compute load bias and base ✓
-    /// 5. get _DYNAMIC real address from the mmap'd segments
+    /// 5. get _DYNAMIC real address from the mmap'd segments ✓
     /// 6a. create SharedObject from above, by relocating
     /// 6b. resolve function and PLT; for now, just act like LD_PRELOAD is set
     /// 7. add `soname` => `SharedObject` entry in `linker.loaded`
     fn load(&self, soname: &str) -> Result<(), String> {
         // TODO: properly open the file using soname -> path with something like `resolve_soname`
         // TODO: if soname ∉ linker.loaded { then do this }
-        match File::open("/usr/lib/libc.so.6") {
+        match File::open(Path::new("/usr/lib/").join(soname)) {
             Ok(mut fd) => {
 
                 println!("Opened: {:?}", fd);
-                let shared_object = try!(loader::load(soname, &mut fd));
+                let shared_object:SharedObject<'a> = try!(loader::load(soname, &mut fd));
+                println!("libs: {:?}", shared_object.libs);
+                println!("dynamic: {:?}", shared_object.dynamic[0]);
+                println!("strtab {:#?}", str_at(shared_object.strtab.as_ptr(), 1));
 
             },
 
@@ -176,14 +181,6 @@ impl<'a> Linker<'a> {
     /// 2. Construct initial lib set from the DT_NEEDED, and DT_NEEDED_SIZE, and go from there
     pub fn link_executable(&self, image: Executable) -> Result<(), String> {
 
-        // TODO: move all this logic into the executable init
-        let link_info = image.link_info;
-        // println!("LinkInfo:\n  {:#?}", &link_info);
-        let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
-        let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
-        let strtab = link_info.strtab as *const u8;
-        println!("Symtab:\n  {:#?}", &symtab);
-
         // TODO: transfer ownership of libs to the linker, so it can be parallelized
         for lib in image.needed {
             // shared_object <- load(lib);
@@ -193,9 +190,10 @@ impl<'a> Linker<'a> {
 
         // relocate the executable
         unsafe {
+            // TODO: move this into image init as well
             let relas = relocate::get_relocations(image.load_bias, image.dynamic);
             println!("Relas:\n  {:#?}", relas);
-            relocate::relocate(image.load_bias, relas, symtab, strtab);
+            relocate::relocate(image.load_bias, relas, image.symtab, image.strtab);
         }
 
         Ok(())

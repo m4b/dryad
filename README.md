@@ -2,7 +2,7 @@
 
 ![dryad](https://en.wikipedia.org/wiki/Dryad#/media/File:Dryad11.jpg)
 
-`dryad` is a 64-bit linux ELF dynamic linker, written from scratch in Rust, and is:
+`dryad` is the **first** _parallel_, 64-bit ELF dynamic linker, written from scratch in Rust, and is:
 
 1. not ready for production
 2. a prototype
@@ -35,8 +35,9 @@ If you don't know anything about dynamic linking, that's totally ok!  Here are s
 5. [sco dynamic linking document](http://www.sco.com/developers/gabi/latest/ch5.dynamic.html)
 6. [iecc dynamic linking article](http://www.iecc.com/linker/linker10.html)
 7. [ELF loading tutorial](http://www.gelato.unsw.edu.au/IA64wiki/LoadingELFFiles)
-8. `man ld-so`
-9. `man 3 getauxval`
+8. `man ld-so` for dynamic linking basics
+9. `man dlopen` for runtime dynamic linking basics
+10. `man 3 getauxval` for information on the auxiliary vector passed by the kernel to programs
 
 
 I don't have any hard and fast rules on contributing (probably no one will, because does anyone care/know about program interpreters anymore?), but from my past experience contributing to open-source projects, for any **non-minor** changes from a _new_ contributor please first raise a simple issue about:
@@ -51,6 +52,7 @@ and then we can discuss it; this way no one's precious time and energy is wasted
 1. **MAJOR**: `/etc/ld.so.cache` loader and parser
 2. **MAJOR**: `dlfcn.h` implementation and shared object bindings for runtime dynamic loading support
 3. **MAJOR**: properly init dynamic linker's static musl libc
+4. **MAJOR**: someone figure out how to get cargo working + tests + deps + linking, because that would be so, so amazing
 4. make unsafe code safer with rust best practices; rust experts definitely needed!
 5. add profiling configs
 6. add tests

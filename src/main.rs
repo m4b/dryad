@@ -24,7 +24,7 @@ extern crate libc;
 //extern "C"
 //void __attribute__((noinline)) __attribute__((visibility("default")))
 // unused; someone figure out how to get gdb working when running as a dyld
-extern "C" {
+extern {
     fn rtld_db_dlactivity();
 }
 
@@ -35,6 +35,18 @@ extern {
     /// which in our case then calls _back_ into `dryad_init` with the pointer to the raw arguments that form the kernel block
     /// see `arch/x86/asm.s`
     fn _start();
+}
+
+fn dryad_main (dryad: &linker::Linker, block: &kernel_block::KernelBlock) -> Result<(), String> {
+    println!("Dryad:\n  {:#?}", &dryad);
+    println!("BEGIN EXE LINKING");
+    let name = utils::as_str(block.argv[0]);
+    let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
+    let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
+    let main_image = try!(binary::elf::image::Executable::new(name, phdr_addr, phnum as usize));
+    println!("Main Image:\n  {:#?}", &main_image);
+
+    Ok(try!(dryad.link_executable(main_image)))
 }
 
 #[no_mangle]
@@ -53,32 +65,25 @@ pub extern fn _dryad_init (raw_args: *const u64) -> u64 {
         // (https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
         // line 786:
         // > Ho ho.  We are not the program interpreter!  We are the program itself!
-        unsafe { write(&"-=|dryad====-\nHo ho.  We are not the program interpreter!  We are the program itself!\n"); }
+        unsafe { write(&"-=|dryad====-\nHo ho.  We are not the program interpreter!  We are the program itself!\n"); } // TODO: add box drawing random character gen here
         _exit(0);
         return 0xd47ad // to make compiler happy
     }
     
     match linker::Linker::new(linker_base, &block) {
         Ok (dryad) => {
-            println!("Dryad:\n  {:#?}", &dryad);
-            println!("BEGIN EXE LINKING");
-            let name = utils::as_str(block.argv[0]);
-            let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
-            let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
-            match binary::elf::image::Executable::new(name, phdr_addr, phnum as usize) {
-                Ok (main_image) => {
-                    println!("Main Image:\n  {:#?}", &main_image);
-                    let link_result = dryad.link_executable(main_image);
-                    println!("<dryad> Linking result: {:?}", link_result);
-                    // commenting _exit will successfully
-                    // tranfer control (in my single test case ;))
-                    // to the program entry in test/test,
-                    // but segfaults when printf is called (obviously)
-                    // since we've done no dynamic linking
-                    _exit(0);
-                    entry
-                },
-                Err (msg) => { println!("{}", msg); _exit(1); 0xd47ad }
+            if let Err(msg) = dryad_main(&dryad, &block) {
+                println!("{}", msg);
+                _exit(1);
+                0xd47ad
+            } else {
+                // commenting _exit will successfully
+                // tranfer control (in my single test case ;))
+                // to the program entry in test/test,
+                // but segfaults when printf is called (obviously)
+                // since we've done no dynamic linking
+                _exit(0);
+                entry
             }
         },
         Err (msg) => {

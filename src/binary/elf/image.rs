@@ -1,11 +1,13 @@
 use std::fmt;
 
-use utils::*;
+//use utils::*;
 
 use binary::elf::program_header;
 use binary::elf::program_header::ProgramHeader;
 use binary::elf::dyn;
 use binary::elf::dyn::Dyn;
+use binary::elf::sym;
+use binary::elf::sym::Sym;
 
 pub struct LinkInfo {
     pub rela:u64,
@@ -31,7 +33,7 @@ pub struct LinkInfo {
 }
 
 impl LinkInfo {
-    pub fn new(bias: u64, dynamic: &[dyn::Dyn]) -> LinkInfo {
+    pub fn new(dynamic: &[dyn::Dyn], bias: u64) -> LinkInfo {
         let mut rela = 0;
         let mut relasz = 0;
         let mut relaent = 0;
@@ -138,6 +140,8 @@ pub struct Executable<'a, 'b> {
     pub dynamic: &'a[Dyn],
     pub link_info: LinkInfo,
     pub needed: Vec<&'a str>,
+    pub symtab: &'a[Sym],
+    pub strtab: *const u8,
 }
 
 impl<'a, 'a2> Executable<'a, 'a2> {
@@ -159,11 +163,12 @@ impl<'a, 'a2> Executable<'a, 'a2> {
 
             if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
 
-                let link_info = LinkInfo::new(load_bias, dynamic);
-                let needed = dyn::get_needed(dynamic, link_info.strtab, load_bias, link_info.needed_count);
-                /*
-                let strtab = dyn::get_strtab(load_bias, dynamic);
-                 */
+                let link_info = LinkInfo::new(dynamic, 0);
+                let needed = dyn::get_needed(dynamic, load_bias, link_info.strtab, link_info.needed_count);
+
+                let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
+                let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
+                let strtab = link_info.strtab as *const u8;
 
                 Ok (Executable {
                     name: name,
@@ -173,6 +178,8 @@ impl<'a, 'a2> Executable<'a, 'a2> {
                     dynamic: dynamic,
                     link_info: link_info,
                     needed: needed,
+                    symtab: symtab,
+                    strtab: strtab,
                 })
             } else {
 
@@ -185,17 +192,21 @@ impl<'a, 'a2> Executable<'a, 'a2> {
 
 impl<'a, 'b> fmt::Debug for Executable<'a, 'b> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "name: {} base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  LinkInfo: {:#?}\n  Needed: {:#?}",
-               self.name, self.base, self.load_bias, self.phdrs, self.dynamic, self.link_info, self.needed)
+        write!(f, "name: {} base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  LinkInfo: {:#?}\n  Symbol Table: {:#?}\n  String Table Ptr: {:#?}\n  Needed: {:#?}",
+               self.name, self.base, self.load_bias, self.phdrs, self.dynamic, self.link_info, self.symtab, self.strtab, self.needed)
     }
 }
 
 /// A SharedObject is an mmap'd dynamic library
-pub struct SharedObject {
+pub struct SharedObject<'a> {
     pub name: String,
     pub phdrs: Vec<ProgramHeader>,
-    pub dynamic: Vec<Dyn>,
+    pub dynamic: &'a[Dyn],
+    pub strtab: Vec<u8>,
+//    pub strtab: &'a[u8],
+    //TODO: add
+    //pub symtab: &'a[Sym],
     pub base: u64,
     pub load_bias: u64,
-    pub libs: Vec<String>,
+    pub libs: Vec<&'a str>,
 }

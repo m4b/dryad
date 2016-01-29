@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 PREFIX=musldist
 LIB=$PREFIX/lib
 SONAME=dryad.so.1

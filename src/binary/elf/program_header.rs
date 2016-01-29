@@ -112,6 +112,7 @@ impl ProgramHeader {
 
 pub fn from_bytes<'a>(bytes: &'a Vec<u8>, phnum: usize) -> &'a[ProgramHeader] {
     unsafe { slice::from_raw_parts(bytes.as_ptr() as *const ProgramHeader, phnum) }
+//    unsafe { mem::transmute(bytes) }
 }
 
 pub unsafe fn to_phdr_array<'a>(phdrp: *const ProgramHeader, phnum: usize) -> &'a[ProgramHeader] {
