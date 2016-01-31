@@ -26,10 +26,11 @@ For testing, you can run `run.sh` which compiles `dryad`, copies it to `/tmp` an
 
 Contributions wholeheartedly welcome!  I'd like this to be very much a community project to build a really great, community, production dynamic linker for use in x86-64 (and beyond) linux systems.
 
-If you don't know anything about dynamic linking, that's totally ok!  Here are some resources if you're curious:
+If you don't know anything about dynamic linking, that's totally ok, no one really does anymore.  Here are some resources if you're curious:
 
 1. [The ELF specification](http://flint.cs.yale.edu/cs422/doc/ELF_Format.pdf)
 2. [x86-64 System V Application Binary Interface](http://www.x86-64.org/documentation/abi.pdf)
+3. [ELF TLS spec](http://people.redhat.com/aoliva/writeups/TLS/RFC-TLSDESC-x86.txt)
 3. [google's bionic dynamic linker source code](http://github.com/android/platform_bionic/)
 4. [glibc dynamic linker source code](https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
 5. [sco dynamic linking document](http://www.sco.com/developers/gabi/latest/ch5.dynamic.html)

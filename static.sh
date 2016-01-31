@@ -13,7 +13,7 @@ export LD_LIBRARY_PATH=$PREFIX/lib:$LD_LIBRARY_PATH
 
 clang -c -o start.o src/arch/x86/asm.s
 
-$PREFIX/bin/rustc --target=x86_64-unknown-linux-musl src/main.rs -g -O --emit obj -o dryad.o
+$PREFIX/bin/rustc --target=x86_64-unknown-linux-musl src/lib.rs -g --emit obj -o dryad.o
 
 # there are still missing symbols:
 #ELF X86_64 DYN @ 0x18b0

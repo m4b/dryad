@@ -8,28 +8,30 @@ use binary::elf::dyn;
 use binary::elf::dyn::Dyn;
 use binary::elf::sym;
 use binary::elf::sym::Sym;
+use binary::elf::strtab::Strtab;
 
+/// Important dynamic LinkInfo generated via a single pass through the _DYNAMIC array
 pub struct LinkInfo {
-    pub rela:u64,
-    pub relasz:u64,
-    pub relaent:u64,
-    pub relacount:u64,
-    pub gnu_hash:u64,
-    pub hash:u64,
-    pub strtab:u64,
-    pub strsz:u64,
-    pub symtab:u64,
-    pub syment:u64,
-    pub pltgot:u64,
-    pub pltrelsz:u64,
-    pub pltrel:u64,
-    pub jmprel:u64,
-    pub verneed:u64,
-    pub verneednum:u64,
-    pub versym:u64,
-    pub init:u64,
-    pub fini:u64,
-    pub needed_count:usize,
+    pub rela: u64,
+    pub relasz: u64, // TODO: make this a usize?
+    pub relaent: u64,
+    pub relacount: u64,
+    pub gnu_hash: u64,
+    pub hash: u64,
+    pub strtab: u64,
+    pub strsz: usize,
+    pub symtab: u64,
+    pub syment: u64,
+    pub pltgot: u64,
+    pub pltrelsz: u64,
+    pub pltrel: u64,
+    pub jmprel: u64,
+    pub verneed: u64,
+    pub verneednum: u64,
+    pub versym: u64,
+    pub init: u64,
+    pub fini: u64,
+    pub needed_count: usize,
 }
 
 impl LinkInfo {
@@ -63,7 +65,7 @@ impl LinkInfo {
                 dyn::DT_GNU_HASH => gnu_hash = dyn.d_val + bias,
                 dyn::DT_HASH => hash = dyn.d_val + bias,
                 dyn::DT_STRTAB => strtab = dyn.d_val + bias,
-                dyn::DT_STRSZ => strsz = dyn.d_val,
+                dyn::DT_STRSZ => strsz = dyn.d_val as usize,
                 dyn::DT_SYMTAB => symtab = dyn.d_val + bias,
                 dyn::DT_SYMENT => syment = dyn.d_val,
                 dyn::DT_PLTGOT => pltgot = dyn.d_val + bias,
@@ -132,20 +134,22 @@ impl fmt::Debug for LinkInfo {
     }
 }
 
-pub struct Executable<'a, 'b> {
-    pub name: &'b str,
+/// The main executable
+/// TODO: think about replacing strtab with a strtab::Strtab
+pub struct Executable<'a> {
+    pub name: &'a str,
     pub base: u64,
     pub load_bias: u64,
     pub phdrs: &'a[ProgramHeader],
     pub dynamic: &'a[Dyn],
     pub link_info: LinkInfo,
-    pub needed: Vec<&'a str>,
+    pub needed: Vec<&'a str>, // Consider making this a string so can share easier
     pub symtab: &'a[Sym],
     pub strtab: *const u8,
 }
 
-impl<'a, 'a2> Executable<'a, 'a2> {
-    pub fn new<'b, 'c> (name: &'c str, phdr_addr: u64, phnum: usize) -> Result<Executable<'b, 'c>, String> {
+impl<'a> Executable<'a> {
+    pub fn new<'b> (name: &'b str, phdr_addr: u64, phnum: usize) -> Result<Executable<'b>, String> {
         unsafe {
             let addr = phdr_addr as *const ProgramHeader;
             let phdrs = program_header::to_phdr_array(addr, phnum);
@@ -181,6 +185,7 @@ impl<'a, 'a2> Executable<'a, 'a2> {
                     symtab: symtab,
                     strtab: strtab,
                 })
+
             } else {
 
                 Err (format!("<dryad> Error: executable {} has no _DYNAMIC array", name))
@@ -190,7 +195,7 @@ impl<'a, 'a2> Executable<'a, 'a2> {
     }
 }
 
-impl<'a, 'b> fmt::Debug for Executable<'a, 'b> {
+impl<'a> fmt::Debug for Executable<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "name: {} base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  LinkInfo: {:#?}\n  Symbol Table: {:#?}\n  String Table Ptr: {:#?}\n  Needed: {:#?}",
                self.name, self.base, self.load_bias, self.phdrs, self.dynamic, self.link_info, self.symtab, self.strtab, self.needed)
@@ -200,13 +205,17 @@ impl<'a, 'b> fmt::Debug for Executable<'a, 'b> {
 /// A SharedObject is an mmap'd dynamic library
 pub struct SharedObject<'a> {
     pub name: String,
+    pub load_bias: u64,
     pub phdrs: Vec<ProgramHeader>,
     pub dynamic: &'a[Dyn],
-    pub strtab: Vec<u8>,
-//    pub strtab: &'a[u8],
-    //TODO: add
-    //pub symtab: &'a[Sym],
-    pub base: u64,
-    pub load_bias: u64,
+    pub strtab: Strtab<'a>,
+    pub symtab: &'a[Sym],
     pub libs: Vec<&'a str>,
+}
+
+impl<'a> fmt::Debug for SharedObject<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "name: {} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Libraries: {:#?}",
+               self.name, self.load_bias, self.phdrs, self.dynamic, self.strtab, self.symtab, self.libs)
+    }
 }

@@ -199,23 +199,24 @@ pub unsafe extern fn write_chars_at(cs: *const u8) {
 
 pub mod page {
    // from <sys/user.h>
-    pub const PAGE_SHIFT:u64 = 12;
-    pub const PAGE_SIZE:u64 = 1 << PAGE_SHIFT;
-    pub const PAGE_MASK:u64 = !(PAGE_SIZE - 1);
+    pub const PAGE_SHIFT: u64    = 12;
+    pub const PAGE_SIZE: u64     = 1 << PAGE_SHIFT;
+    const PAGE_SIZE_MINUS_1: u64 = PAGE_SIZE - 1;
+    pub const PAGE_MASK: u64     = !PAGE_SIZE_MINUS_1;
 
     // from bionic
     /// Returns the address of the page containing address 'x'.
     #[inline(always)]
-    pub fn page_start (x:u64) -> u64 { x & PAGE_MASK }
+    pub fn page_start (x: u64) -> u64 { x & PAGE_MASK }
 
     /// Returns the offset of address 'x' in its page.
     #[inline(always)]
-    pub fn page_offset (x:u64) -> u64 { x & !PAGE_MASK }
+    pub fn page_offset (x: u64) -> u64 { x & PAGE_SIZE_MINUS_1 }
 
     /// Returns the address of the next page after address 'x', unless 'x' is
     /// itself at the start of a page.
     #[inline(always)]
-    pub fn page_end (x:u64) -> u64 { page_start(x + (PAGE_SIZE - 1)) }
+    pub fn page_end (x: u64) -> u64 { page_start(x + PAGE_SIZE_MINUS_1) }
 
 }
 
@@ -241,7 +242,12 @@ pub mod mmap {
 
     // from musl libc
     extern {
-        pub fn mmap(addr: *const u64, len: usize, prot: isize, flags: c_int, fildes: c_int, off: usize) -> u64;
+        fn mmap64(addr: *const u64, len: usize, prot: isize, flags: c_int, fildes: c_int, off: usize) -> u64;
+    }
+
+    #[inline(always)]
+    pub unsafe fn mmap(addr: *const u64, len: usize, prot: isize, flags: c_int, fildes: c_int, off: usize) -> u64 {
+        mmap64(addr, len, prot, flags, fildes, off)
     }
 
 }

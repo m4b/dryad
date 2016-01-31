@@ -1,5 +1,7 @@
 #![allow(unused_assignments)]
 
+/// TODO: remove unused_assignments after validating with relacount, et. al
+
 use std::slice;
 
 use utils;
@@ -7,7 +9,7 @@ use binary::elf::rela;
 use binary::elf::sym;
 use binary::elf::dyn;
 
-// TODO: remove the load bias, or this function altogether
+// TODO: consider moving this to linker.rs as only it uses it
 pub unsafe fn get_relocations(bias: u64, dynamic: &[dyn::Dyn]) -> &[rela::Rela] {
     let mut rela = 0;
     let mut relasz = 0;
@@ -22,7 +24,7 @@ pub unsafe fn get_relocations(bias: u64, dynamic: &[dyn::Dyn]) -> &[rela::Rela] 
             _ => ()
         }
     }
-    // TODO: validate relaent,
+    // TODO: validate relaent, using relacount
     let count = (relasz / relaent) as usize;
     slice::from_raw_parts(rela as *const rela::Rela, count)
 }

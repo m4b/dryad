@@ -1,45 +1,86 @@
+/// TODO: add markdown columns
+/// Relocation computations
+/// R_X86_64_NONE 0 none none
+/// R_X86_64_64 1 word64 S + A
+/// R_X86_64_PC32 2 word32 S + A - P
+/// R_X86_64_GOT32 3 word32 G + A
+/// R_X86_64_PLT32 4 word32 L + A - P
+/// R_X86_64_COPY 5 none none
+/// R_X86_64_GLOB_DAT 6 word64 S
+/// R_X86_64_JUMP_SLOT 7 word64 S
+/// R_X86_64_RELATIVE 8 word64 B + A
+/// R_X86_64_GOTPCREL 9 word32 G + GOT + A - P
+/// R_X86_64_32 10 word32 S + A
+/// R_X86_64_32S 11 word32 S + A
+/// R_X86_64_16 12 word16 S + A
+/// R_X86_64_PC16 13 word16 S + A - P
+/// R_X86_64_8 14 word8 S + A
+/// R_X86_64_PC8 15 word8 S + A - P
+/// R_X86_64_DTPMOD64 16 word64
+/// R_X86_64_DTPOFF64 17 word64
+/// R_X86_64_TPOFF64 18 word64
+/// R_X86_64_TLSGD 19 word32
+/// R_X86_64_TLSLD 20 word32
+/// R_X86_64_DTPOFF32 21 word32
+/// R_X86_64_GOTTPOFF 22 word32
+/// R_X86_64_TPOFF32 23 word32
+/// R_X86_64_PC64 24 word64 S + A - P
+/// R_X86_64_GOTOFF64 25 word64 S + A - GOT
+/// R_X86_64_GOTPC32 26 word32 GOT + A - P
+/// R_X86_64_SIZE32 32 word32 Z + A
+/// R_X86_64_SIZE64 33 word64 Z + A
+/// R_X86_64_GOTPC32_TLSDESC 34 word32
+/// R_X86_64_TLSDESC_CALL 35 none
+/// R_X86_64_TLSDESC 36 word64×2
+/// R_X86_64_IRELATIVE 37 word64 indirect (B + A)
+///
+/// TLS information is at http://people.redhat.com/aoliva/writeups/TLS/RFC-TLSDESC-x86.txt
+/// R_X86_64_IRELATIVE is similar to R_X86_64_RELATIVE except that
+/// the value used in this relocation is the program address returned by the function,
+/// which takes no arguments, at the address of the result of the corresponding
+/// R_X86_64_RELATIVE relocation.
 use std::fmt;
 
-pub const R_X86_64_NONE:u64 = 0; /* No reloc */
-pub const R_X86_64_64:u64 = 1; /* Direct 64 bit  */
-pub const R_X86_64_PC32:u64 = 2; /* PC relative 32 bit signed */
-pub const R_X86_64_GOT32:u64 = 3; /* 32 bit GOT entry */
-pub const R_X86_64_PLT32:u64 = 4; /* 32 bit PLT address */
-pub const R_X86_64_COPY:u64 = 5; /* Copy symbol at runtime */
-pub const R_X86_64_GLOB_DAT:u64 = 6; /* Create GOT entry */
-pub const R_X86_64_JUMP_SLOT:u64 = 7; /* Create PLT entry */
-pub const R_X86_64_RELATIVE:u64 = 8; /* Adjust by program base */
-pub const R_X86_64_GOTPCREL:u64 = 9; /* 32 bit signed PC relative offset to GOT */
-pub const R_X86_64_32:u64 = 10; /* Direct 32 bit zero extended */
-pub const R_X86_64_32S:u64 = 11; /* Direct 32 bit sign extended */
-pub const R_X86_64_16:u64 = 12; /* Direct 16 bit zero extended */
-pub const R_X86_64_PC16:u64 = 13; /* 16 bit sign extended pc relative */
-pub const R_X86_64_8:u64 = 14; /* Direct 8 bit sign extended  */
-pub const R_X86_64_PC8:u64 = 15; /* 8 bit sign extended pc relative */
-pub const R_X86_64_DTPMOD64:u64 = 16; /* ID of module containing symbol */
-pub const R_X86_64_DTPOFF64:u64 = 17; /* Offset in module's TLS block */
-pub const R_X86_64_TPOFF64:u64 = 18; /* Offset in initial TLS block */
-pub const R_X86_64_TLSGD:u64 = 19; /* 32 bit signed PC relative offset to two GOT entries for GD symbol */
-pub const R_X86_64_TLSLD:u64 = 20; /* 32 bit signed PC relative offset to two GOT entries for LD symbol */
-pub const R_X86_64_DTPOFF32:u64 = 21; /* Offset in TLS block */
-pub const R_X86_64_GOTTPOFF:u64 = 22; /* 32 bit signed PC relative offset to GOT entry for IE symbol */
-pub const R_X86_64_TPOFF32:u64 = 23; /* Offset in initial TLS block */
-pub const R_X86_64_PC64:u64 = 24; /* PC relative 64 bit */
-pub const R_X86_64_GOTOFF64:u64 = 25; /* 64 bit offset to GOT */
-pub const R_X86_64_GOTPC32:u64 = 26; /* 32 bit signed pc relative offset to GOT */
-pub const R_X86_64_GOT64:u64 = 27; /* 64-bit GOT entry offset */
-pub const R_X86_64_GOTPCREL64:u64 = 28; /* 64-bit PC relative offset to GOT entry */
-pub const R_X86_64_GOTPC64:u64 = 29; /* 64-bit PC relative offset to GOT */
-pub const R_X86_64_GOTPLT64:u64 = 30; /* like GOT64, says PLT entry needed */
-pub const R_X86_64_PLTOFF64:u64 = 31; /* 64-bit GOT relative offset to PLT entry */
-pub const R_X86_64_SIZE32:u64 = 32; /* Size of symbol plus 32-bit addend */
-pub const R_X86_64_SIZE64:u64 = 33; /* Size of symbol plus 64-bit addend */
-pub const R_X86_64_GOTPC32_TLSDESC:u64 = 34; /* GOT offset for TLS descriptor.*/
-pub const R_X86_64_TLSDESC_CALL:u64 = 35; /* Marker for call through TLS descriptor.  */
-pub const R_X86_64_TLSDESC:u64 = 36; /* TLS descriptor.  */
-pub const R_X86_64_IRELATIVE:u64 = 37; /* Adjust indirectly by program base */
-pub const R_X86_64_RELATIVE64:u64 = 38; /* 64-bit adjust by program base */
-pub const R_X86_64_NUM:u64 = 39; 
+pub const R_X86_64_NONE: u64 = 0; /* No reloc */
+pub const R_X86_64_64: u64 = 1; /* Direct 64 bit  */
+pub const R_X86_64_PC32: u64 = 2; /* PC relative 32 bit signed */
+pub const R_X86_64_GOT32: u64 = 3; /* 32 bit GOT entry */
+pub const R_X86_64_PLT32: u64 = 4; /* 32 bit PLT address */
+pub const R_X86_64_COPY: u64 = 5; /* Copy symbol at runtime */
+pub const R_X86_64_GLOB_DAT: u64 = 6; /* Create GOT entry */
+pub const R_X86_64_JUMP_SLOT: u64 = 7; /* Create PLT entry */
+pub const R_X86_64_RELATIVE: u64 = 8; /* Adjust by program base */
+pub const R_X86_64_GOTPCREL: u64 = 9; /* 32 bit signed PC relative offset to GOT */
+pub const R_X86_64_32: u64 = 10; /* Direct 32 bit zero extended */
+pub const R_X86_64_32S: u64 = 11; /* Direct 32 bit sign extended */
+pub const R_X86_64_16: u64 = 12; /* Direct 16 bit zero extended */
+pub const R_X86_64_PC16: u64 = 13; /* 16 bit sign extended pc relative */
+pub const R_X86_64_8: u64 = 14; /* Direct 8 bit sign extended  */
+pub const R_X86_64_PC8: u64 = 15; /* 8 bit sign extended pc relative */
+pub const R_X86_64_DTPMOD64: u64 = 16; /* ID of module containing symbol */
+pub const R_X86_64_DTPOFF64: u64 = 17; /* Offset in module's TLS block */
+pub const R_X86_64_TPOFF64: u64 = 18; /* Offset in initial TLS block */
+pub const R_X86_64_TLSGD: u64 = 19; /* 32 bit signed PC relative offset to two GOT entries for GD symbol */
+pub const R_X86_64_TLSLD: u64 = 20; /* 32 bit signed PC relative offset to two GOT entries for LD symbol */
+pub const R_X86_64_DTPOFF32: u64 = 21; /* Offset in TLS block */
+pub const R_X86_64_GOTTPOFF: u64 = 22; /* 32 bit signed PC relative offset to GOT entry for IE symbol */
+pub const R_X86_64_TPOFF32: u64 = 23; /* Offset in initial TLS block */
+pub const R_X86_64_PC64: u64 = 24; /* PC relative 64 bit */
+pub const R_X86_64_GOTOFF64: u64 = 25; /* 64 bit offset to GOT */
+pub const R_X86_64_GOTPC32: u64 = 26; /* 32 bit signed pc relative offset to GOT */
+pub const R_X86_64_GOT64: u64 = 27; /* 64-bit GOT entry offset */
+pub const R_X86_64_GOTPCREL64: u64 = 28; /* 64-bit PC relative offset to GOT entry */
+pub const R_X86_64_GOTPC64: u64 = 29; /* 64-bit PC relative offset to GOT */
+pub const R_X86_64_GOTPLT64: u64 = 30; /* like GOT64, says PLT entry needed */
+pub const R_X86_64_PLTOFF64: u64 = 31; /* 64-bit GOT relative offset to PLT entry */
+pub const R_X86_64_SIZE32: u64 = 32; /* Size of symbol plus 32-bit addend */
+pub const R_X86_64_SIZE64: u64 = 33; /* Size of symbol plus 64-bit addend */
+pub const R_X86_64_GOTPC32_TLSDESC: u64 = 34; /* GOT offset for TLS descriptor.*/
+pub const R_X86_64_TLSDESC_CALL: u64 = 35; /* Marker for call through TLS descriptor.  */
+pub const R_X86_64_TLSDESC: u64 = 36; /* TLS descriptor.  */
+pub const R_X86_64_IRELATIVE: u64 = 37; /* Adjust indirectly by program base */
+pub const R_X86_64_RELATIVE64: u64 = 38; /* 64-bit adjust by program base */
+pub const R_X86_64_NUM: u64 = 39;
 
 #[inline]
 pub fn type_to_str(typ: u64) -> &'static str {
@@ -117,3 +158,4 @@ impl fmt::Debug for Rela {
                self.r_offset, type_to_str(typ), sym, self.r_addend)
     }
 }
+

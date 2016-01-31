@@ -11,6 +11,8 @@ pub struct Sym {
  pub st_size: u64 /* Symbol size */
 }
 
+pub const SIZEOF_SYM: usize = 4 + 1 + 1 + 2 + 8 + 8;
+
 #[inline]
 pub fn st_bind(val: u8) -> u8 {
     val >> 4
