@@ -12,6 +12,7 @@ use binary::elf::header;
 use binary::elf::program_header;
 use binary::elf::dyn;
 use binary::elf::sym;
+use binary::elf::rela;
 use binary::elf::strtab::Strtab;
 use binary::elf::image::{LinkInfo, SharedObject};
 
@@ -175,6 +176,9 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
     // 2. Reserve address space with anon mmap
     let (start, load_bias) = try!(reserve_address_space(&phdrs));
 
+    // semi-hack with adding the load bias right now
+    let relatab = unsafe { rela::get(link_info.rela + load_bias, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize) };
+
     // TODO: place this in a separate function
     // 3. mmap the PT_LOAD program headers
     for phdr in phdrs {
@@ -182,6 +186,8 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
         if phdr.p_type != program_header::PT_LOAD {
             continue
         }
+
+        // TODO: add a boolean switch to know there were actually `PT_LOAD` sections, and `Err` otherwise
 
         let seg_start:u64 = phdr.p_vaddr + load_bias;
         let seg_end:u64   = seg_start + phdr.p_memsz;
@@ -233,6 +239,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
         symtab: symtab,
         strtab: strtab,
         libs: needed,
+        relatab: relatab,
     };
 
     Ok (shared_object)

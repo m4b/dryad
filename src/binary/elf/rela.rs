@@ -39,7 +39,9 @@
 /// the value used in this relocation is the program address returned by the function,
 /// which takes no arguments, at the address of the result of the corresponding
 /// R_X86_64_RELATIVE relocation.
+
 use std::fmt;
+use std::slice;
 
 pub const R_X86_64_NONE: u64 = 0; /* No reloc */
 pub const R_X86_64_64: u64 = 1; /* Direct 64 bit  */
@@ -159,3 +161,13 @@ impl fmt::Debug for Rela {
     }
 }
 
+/// TODO: consider different name, like `from_memory` or `from_raw_parts`
+/// Gets the rela entries given a rela u64, the size of the rela section in the binary, the size of a rela entry, and a count of how many.
+/// Assumes the pointer is valid and can safely return a slice of memory pointing to the relas because:
+/// 1. `rela` points to memory received from the kernel (i.e., it loaded the executable), _or_
+/// 2. The binary has already been mmapped (i.e., it's a `SharedObject`), and hence it's safe to return a slice of that memory.
+pub unsafe fn get<'a>(rela: u64, relasz: usize, relaent: usize, relacount: usize) -> &'a[Rela] {
+    // TODO: validate relaent, using relacount
+    let count = (relasz / relaent) as usize;
+    slice::from_raw_parts(rela as *const Rela, count)
+}

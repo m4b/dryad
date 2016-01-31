@@ -59,3 +59,8 @@ and then we can discuss it; this way no one's precious time and energy is wasted
 6. add tests
 7. implement dynamic linking
 8. x all the things
+
+# Questions
+
+1. Is the `rela` _always_ in a `PT_LOAD` segment?
+2. Is the `strtab` _always_ after the `symtab` in terms of binary offset, and hence we can compute the size of the symtab by subtracting the two?

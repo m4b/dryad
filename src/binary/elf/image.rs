@@ -1,3 +1,5 @@
+/// TODO: add traits to SharedObject and Executable so they can be relocated by the same function
+
 use std::fmt;
 
 //use utils::*;
@@ -9,6 +11,8 @@ use binary::elf::dyn::Dyn;
 use binary::elf::sym;
 use binary::elf::sym::Sym;
 use binary::elf::strtab::Strtab;
+use binary::elf::rela;
+use binary::elf::rela::Rela;
 
 /// Important dynamic LinkInfo generated via a single pass through the _DYNAMIC array
 pub struct LinkInfo {
@@ -145,7 +149,8 @@ pub struct Executable<'a> {
     pub link_info: LinkInfo,
     pub needed: Vec<&'a str>, // Consider making this a string so can share easier
     pub symtab: &'a[Sym],
-    pub strtab: *const u8,
+    pub strtab: Strtab<'a>,
+    pub relatab: &'a[Rela],
 }
 
 impl<'a> Executable<'a> {
@@ -167,12 +172,13 @@ impl<'a> Executable<'a> {
 
             if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
 
-                let link_info = LinkInfo::new(dynamic, 0);
+                let link_info = LinkInfo::new(dynamic, load_bias);
                 let needed = dyn::get_needed(dynamic, load_bias, link_info.strtab, link_info.needed_count);
 
                 let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
                 let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
-                let strtab = link_info.strtab as *const u8;
+                let strtab = Strtab::new(link_info.strtab as *const u8, link_info.strsz);
+                let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
 
                 Ok (Executable {
                     name: name,
@@ -184,12 +190,12 @@ impl<'a> Executable<'a> {
                     needed: needed,
                     symtab: symtab,
                     strtab: strtab,
+                    relatab: relatab
                 })
 
             } else {
 
                 Err (format!("<dryad> Error: executable {} has no _DYNAMIC array", name))
-
             }
         }
     }
@@ -197,8 +203,8 @@ impl<'a> Executable<'a> {
 
 impl<'a> fmt::Debug for Executable<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "name: {} base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  LinkInfo: {:#?}\n  Symbol Table: {:#?}\n  String Table Ptr: {:#?}\n  Needed: {:#?}",
-               self.name, self.base, self.load_bias, self.phdrs, self.dynamic, self.link_info, self.symtab, self.strtab, self.needed)
+        write!(f, "name: {} base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  LinkInfo: {:#?}\n  Symbol Table: {:#?}\n  String Table Ptr: {:#?}\n  Rela Table: {:#?}\n  Needed: {:#?}",
+               self.name, self.base, self.load_bias, self.phdrs, self.dynamic, self.link_info, self.symtab, self.strtab, self.relatab, self.needed)
     }
 }
 
@@ -210,12 +216,13 @@ pub struct SharedObject<'a> {
     pub dynamic: &'a[Dyn],
     pub strtab: Strtab<'a>,
     pub symtab: &'a[Sym],
+    pub relatab: &'a[Rela],
     pub libs: Vec<&'a str>,
 }
 
 impl<'a> fmt::Debug for SharedObject<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "name: {} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Libraries: {:#?}",
-               self.name, self.load_bias, self.phdrs, self.dynamic, self.strtab, self.symtab, self.libs)
+        write!(f, "name: {} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Rela Table: {:#?}\n  Libraries: {:#?}",
+               self.name, self.load_bias, self.phdrs, self.dynamic, self.strtab, self.symtab, self.relatab, self.libs)
     }
 }
