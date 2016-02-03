@@ -1,3 +1,5 @@
+/// TODO: parse and return flags, add as entry to the struct
+
 use std::fs::File;
 use std::io::Read;
 //use std::io::Seek;
@@ -170,14 +172,16 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
     let (symtab_start, symtab_size, symtab_data) = try!(map_fragment(&fd, 0, link_info.symtab, (link_info.strtab - link_info.symtab) as usize));
 
     let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM as u64;
-    // TODO: probably remove this?
+    // TODO: probably remove this?, and add unsafe
     let symtab = sym::get_symtab(symtab_data as *const sym::Sym, num_syms as usize);
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias) = try!(reserve_address_space(&phdrs));
 
-    // semi-hack with adding the load bias right now
+    // semi-hack with adding the load bias right now, but probably fine
     let relatab = unsafe { rela::get(link_info.rela + load_bias, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize) };
+
+    let pltrelatab = unsafe { rela::get_plt(link_info.jmprel + load_bias, link_info.pltrelsz as usize) };
 
     // TODO: place this in a separate function
     // 3. mmap the PT_LOAD program headers
@@ -219,7 +223,9 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
                                        mmap_flags as c_int,
                                        fd.as_raw_fd() as c_int,
                                        file_page_start as usize);
+
                 if start == mmap::MAP_FAILED {
+
                     return Err(format!("<dryad> loading phdrs for {} failed with errno {}, aborting execution", &soname, get_errno()))
                 }
             }
@@ -232,14 +238,16 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
     let shared_object = SharedObject {
         name: soname.to_string(),
         load_bias: load_bias,
+        libs: needed,
         // TODO: mmap phdrs ? i don't think we need them so probably not
         phdrs: phdrs.to_owned(),
         dynamic: dynamic,
         // TODO: make symtab indexable like strtab
         symtab: symtab,
         strtab: strtab,
-        libs: needed,
         relatab: relatab,
+        pltrelatab: pltrelatab,
+        pltgot: (link_info.pltgot + load_bias) as *const u64,
     };
 
     Ok (shared_object)

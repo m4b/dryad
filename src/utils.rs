@@ -19,7 +19,7 @@ pub extern fn _exit(code: u64) {
 
 // this comes from asm.s
 extern {
-    fn _print(msg: *const u8, len: u64);
+    pub fn _print(msg: *const u8, len: u64);
 }
 
 /*
@@ -31,10 +31,12 @@ fn _print(msg: *const u8, len: u64) {
 }
 */
 
+
 #[no_mangle]
 pub unsafe extern fn write(msg: &str){
     _print(msg.as_ptr(), msg.len() as u64);
 }
+
 
 /*
 #[cfg(debug_assertions)]
@@ -53,8 +55,9 @@ macro_rules! debug_write {
 }
 */
 
-/*
+
 // this is _totally_ broken and is massively side-effectful and unpredicatable
+/*
 #[no_mangle]
 pub extern fn write(msg: &str) {
     unsafe {
@@ -63,7 +66,7 @@ pub extern fn write(msg: &str) {
               pushq %rdx
               pushq %rsi
               movq $$1, %rax
-              movq $$1, %rdi
+              movq $$2, %rdi
               syscall
               popq %rsi
               popq %rdx
@@ -109,7 +112,6 @@ fn num_digits_t() {
     assert_eq!(num_digits(999), 3);
 }
 
-#[no_mangle]
 pub unsafe extern fn write_u64(i: u64, base16: bool) {
     if base16 {
         write(to_hex(&i, &mut [0; 16]));
@@ -153,7 +155,6 @@ fn to_hex<'a>(i: &u64, output: &'a mut[u8; 16]) -> &'a str {
         output[j] = buffer[i];
         j += 1;
     }
-
     str::from_utf8(output).unwrap().trim_matches('\0')
 }
 

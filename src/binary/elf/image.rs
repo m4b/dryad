@@ -1,5 +1,4 @@
-/// TODO: add traits to SharedObject and Executable so they can be relocated by the same function
-
+/// TODO: decide on whether to support only Rela (probably yes?); have rdr scan binaries to see frequency of rel (no addend) relocation tables
 use std::fmt;
 
 //use utils::*;
@@ -138,23 +137,37 @@ impl fmt::Debug for LinkInfo {
     }
 }
 
-/// The main executable
-/// TODO: think about replacing strtab with a strtab::Strtab
-pub struct Executable<'a> {
-    pub name: &'a str,
-    pub base: u64,
-    pub load_bias: u64,
-    pub phdrs: &'a[ProgramHeader],
-    pub dynamic: &'a[Dyn],
-    pub link_info: LinkInfo,
-    pub needed: Vec<&'a str>, // Consider making this a string so can share easier
-    pub symtab: &'a[Sym],
-    pub strtab: Strtab<'a>,
-    pub relatab: &'a[Rela],
+pub trait Relocatable<'a> {
+    fn name(&'a self) -> &'a str;
+    fn symtab(&self) -> &'a[Sym];
+    fn load_bias(&self) -> u64;
+    fn strtab(&self) -> &Strtab<'a>;
+    fn relatab(&self) -> &'a[Rela];
+    fn pltrelatab(&self) -> &'a[Rela];
+    fn pltgot(&self) -> *const u64;
 }
 
-impl<'a> Executable<'a> {
-    pub fn new<'b> (name: &'b str, phdr_addr: u64, phnum: usize) -> Result<Executable<'b>, String> {
+
+/// The main executable, whose lifetime is tied to the lifetime of the process itself, which is - itself!
+/// This is also incidentally where we receive the in-memory data like the program headers, the lib strings, the strtab, etc:
+/// everything was already mapped into memory and loaded for us by the kernel.
+pub struct Executable<'process> {
+    pub name: &'process str,
+    pub base: u64,
+    pub load_bias: u64,
+    pub libs: Vec<&'process str>, // Consider making this a string so can share easier
+    pub phdrs: &'process[ProgramHeader],
+    pub dynamic: &'process[Dyn],
+    pub link_info: LinkInfo,
+    pub symtab: &'process[Sym],
+    pub strtab: Strtab<'process>,
+    pub relatab: &'process[Rela],
+    pub pltrelatab: &'process[Rela],
+    pub pltgot: *const u64,
+}
+
+impl<'process> Executable<'process> {
+    pub fn new (name: &'process str, phdr_addr: u64, phnum: usize) -> Result<Executable<'process>, String> {
         unsafe {
             let addr = phdr_addr as *const ProgramHeader;
             let phdrs = program_header::to_phdr_array(addr, phnum);
@@ -173,24 +186,30 @@ impl<'a> Executable<'a> {
             if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
 
                 let link_info = LinkInfo::new(dynamic, load_bias);
-                let needed = dyn::get_needed(dynamic, load_bias, link_info.strtab, link_info.needed_count);
+                let libs = dyn::get_needed(dynamic, load_bias, link_info.strtab, link_info.needed_count);
 
+                // TODO: swap out the link_info syment with compile time constant SIZEOF_SYM?
                 let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
                 let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
                 let strtab = Strtab::new(link_info.strtab as *const u8, link_info.strsz);
                 let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
+                let pltreltab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
+
+                let pltgot = link_info.pltgot as *const u64;
 
                 Ok (Executable {
                     name: name,
                     base: base,
                     load_bias: load_bias,
+                    libs: libs,
                     phdrs: phdrs,
                     dynamic: dynamic,
                     link_info: link_info,
-                    needed: needed,
                     symtab: symtab,
                     strtab: strtab,
-                    relatab: relatab
+                    relatab: relatab,
+                    pltrelatab: pltreltab,
+                    pltgot: pltgot,
                 })
 
             } else {
@@ -201,28 +220,78 @@ impl<'a> Executable<'a> {
     }
 }
 
-impl<'a> fmt::Debug for Executable<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "name: {} base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  LinkInfo: {:#?}\n  Symbol Table: {:#?}\n  String Table Ptr: {:#?}\n  Rela Table: {:#?}\n  Needed: {:#?}",
-               self.name, self.base, self.load_bias, self.phdrs, self.dynamic, self.link_info, self.symtab, self.strtab, self.relatab, self.needed)
+impl<'process> Relocatable<'process> for Executable<'process> {
+    fn name(&'process self) -> &'process str {
+        self.name
+    }
+    fn symtab(&self) -> &'process[Sym] {
+        self.symtab
+    }
+    fn load_bias(&self) -> u64 {
+        self.load_bias
+    }
+    fn strtab(&self) -> &Strtab<'process> {
+        &self.strtab
+    }
+    fn relatab(&self) -> &'process[Rela] {
+        self.relatab
+    }
+    fn pltrelatab(&self) -> &'process[Rela] {
+        self.pltrelatab
+    }
+    fn pltgot(&self) -> *const u64 {
+        self.pltgot
     }
 }
 
-/// A SharedObject is an mmap'd dynamic library
-pub struct SharedObject<'a> {
-    pub name: String,
-    pub load_bias: u64,
-    pub phdrs: Vec<ProgramHeader>,
-    pub dynamic: &'a[Dyn],
-    pub strtab: Strtab<'a>,
-    pub symtab: &'a[Sym],
-    pub relatab: &'a[Rela],
-    pub libs: Vec<&'a str>,
+impl<'process> fmt::Debug for Executable<'process> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "name: {} base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  LinkInfo: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Rela Table: {:#?}\n  Plt Rela Table: {:#?}\n  Needed: {:#?}",
+               self.name, self.base, self.load_bias, self.phdrs, self.dynamic, self.link_info, self.strtab, self.symtab, self.relatab, self.pltrelatab, self.libs)
+    }
 }
 
-impl<'a> fmt::Debug for SharedObject<'a> {
+/// A `SharedObject` is a mmap'd dynamic library
+pub struct SharedObject<'mmap> {
+    pub name: String,
+    pub load_bias: u64,
+    pub libs: Vec<&'mmap str>,
+    pub phdrs: Vec<ProgramHeader>,
+    pub dynamic: &'mmap[Dyn],
+    pub strtab: Strtab<'mmap>,
+    pub symtab: &'mmap[Sym],
+    pub relatab: &'mmap[Rela],
+    pub pltrelatab: &'mmap[Rela],
+    pub pltgot: *const u64,
+}
+
+impl<'mmap> fmt::Debug for SharedObject<'mmap> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "name: {} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Rela Table: {:#?}\n  Libraries: {:#?}",
-               self.name, self.load_bias, self.phdrs, self.dynamic, self.strtab, self.symtab, self.relatab, self.libs)
+        write!(f, "name: {} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Rela Table: {:#?}\n  Plt Rela Table: {:#?}\n  Libraries: {:#?}",
+               self.name, self.load_bias, self.phdrs, self.dynamic, self.strtab, self.symtab, self.relatab, self.pltrelatab, self.libs)
+    }
+}
+
+impl<'mmap> Relocatable<'mmap> for SharedObject<'mmap> {
+    fn name(&'mmap self) -> &'mmap str {
+        &self.name.as_str()
+    }
+    fn symtab(&self) -> &'mmap[Sym] {
+        self.symtab
+    }
+    fn load_bias(&self) -> u64 {
+        self.load_bias
+    }
+    fn strtab(&self) -> &Strtab<'mmap> {
+        &self.strtab
+    }
+    fn relatab(&self) -> &'mmap[Rela] {
+        self.relatab
+    }
+    fn pltrelatab(&self) -> &'mmap[Rela] {
+        self.pltrelatab
+    }
+    fn pltgot(&self) -> *const u64 {
+        self.pltgot
     }
 }

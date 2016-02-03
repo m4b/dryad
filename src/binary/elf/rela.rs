@@ -137,6 +137,8 @@ pub struct Rela {
     pub r_addend:i64,/* Addend */
 }
 
+pub const SIZEOF_RELA: usize = 8 + 8 + 8;
+
 #[inline]
 pub fn r_sym (info: u64) -> u64 {
     info >> 32
@@ -169,5 +171,14 @@ impl fmt::Debug for Rela {
 pub unsafe fn get<'a>(rela: u64, relasz: usize, relaent: usize, relacount: usize) -> &'a[Rela] {
     // TODO: validate relaent, using relacount
     let count = (relasz / relaent) as usize;
+    /*
+    if count != relacount {
+        panic!("<dryad> computed rela count {} does not match relacount {}", count, relacount)
+    }
+    */
     slice::from_raw_parts(rela as *const Rela, count)
+}
+
+pub unsafe fn get_plt<'a>(jmprel: u64, pltrelsz: usize) -> &'a[Rela] {
+    slice::from_raw_parts(jmprel as *const Rela, pltrelsz / SIZEOF_RELA)
 }

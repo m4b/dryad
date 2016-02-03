@@ -3,22 +3,26 @@
 use std::collections::HashMap;
 use std::boxed::Box;
 use std::fmt;
+use std::mem;
 use std::fs::File;
 //use std::fs::OpenOptions;
 use std::path::Path;
 
-//use utils::*;
 use binary::elf::header;
 use binary::elf::program_header;
 use binary::elf::dyn;
-use binary::elf::sym;
+//use binary::elf::sym;
 use binary::elf::rela;
 use binary::elf::loader;
-use binary::elf::image::{ Executable, SharedObject} ;
+use binary::elf::image::{ Relocatable, Executable, SharedObject} ;
 
 use kernel_block;
 use auxv;
 use relocate;
+
+#[no_mangle]
+//pub static LINKER_ADDR: Option<&'static mut Linker<'static>> = None;
+//pub static LINKER_ADDR: u64 = 0;
 
 /// The internal config the dynamic linker generates from the environment variables it receives.
 struct Config<'a> {
@@ -107,6 +111,7 @@ extern {
 }
 
 /// The dynamic linker
+/// TODO: remove working set from mem::forget as the got[1] entry, and instead add the flattened link_map as the rendevous structure that is one-time allocated and then forgotten (then reconstituted back in dryad_resolve_symbol)
 /// TODO: add lib vector or lib working_set and lib finished_set
 /// TODO: Change permissions on most of these fields
 pub struct Linker<'a> {
@@ -124,11 +129,32 @@ pub struct Linker<'a> {
     // TODO: lastly, must determine a termination condition to that indicates all threads have finished recursing and no more work is waiting, and hence can transition to the relocation stage
 }
 
+extern {
+    /// The assembly stub which grabs the stack pointer, sends it to `dryad_resolve_symbol` as a parameter, and aligns the stack.
+    /// _Many_ thanks to Mutabah from `#rust@Mozilla` for suggesting the stack needed to be 16-byte aligned, after I experienced crashes on `movaps %xmm2,0x60(%rsp)`.
+    fn _dryad_resolve_symbol();
+}
+
+#[no_mangle]
+pub extern fn dryad_resolve_symbol (raw_stack_ptr: *const u64) -> u64 {
+    unsafe {
+        println!("raw_stack_ptr: {:?} -> 0x{:x} 0x{:x} 0x{:x} 0x{:x}", raw_stack_ptr, *raw_stack_ptr, *raw_stack_ptr.offset(1), *raw_stack_ptr.offset(2), *raw_stack_ptr.offset(3));
+
+        let working_set = Box::from_raw((*raw_stack_ptr) as *mut HashMap<String, SharedObject>);
+
+        let relocation_index = *raw_stack_ptr.offset(1);
+
+        println!("Reconstructed working set: {:#?} with idx: {}", working_set, relocation_index);
+
+        0xdeadbeef
+    }
+}
+
 /// TODO:
 /// 1. add config logic path based on env variables
 /// 2. be able to link against linux vdso
 impl<'a> Linker<'a> {
-    pub fn new<'b> (base: u64, block: &'b kernel_block::KernelBlock) -> Result<Linker<'b>, &'static str> {
+    pub fn new<'process> (base: u64, block: &'process kernel_block::KernelBlock) -> Result<Linker<'process>, &'static str> {
         unsafe {
             let ehdr = header::unsafe_as_header(base as *const u64);
             let addr = (base + ehdr.e_phoff) as *const program_header::ProgramHeader;
@@ -165,12 +191,14 @@ impl<'a> Linker<'a> {
 
     // TODO: fix this with proper symbol finding, etc.
     // HACK for testing, performs shitty linear search * num so's
-    fn find_symbol(&self, name: &str) -> Option<&sym::Sym> {
+//    fn find_symbol(&self, name: &str) -> Option<&sym::Sym> {
+    fn find_symbol(&self, name: &str) -> Option<u64> {
         for so in self.working_set.values() {
             //println!("<dryad> searching {} for {}", so.name, name);
             for sym in so.symtab {
                 if &so.strtab[sym.st_name as usize] == name {
-                    return Some (sym)
+//                    println!("<dryad> Symbol \"{:?}\" found in {}", name, so.name);
+                    return Some (sym.st_value + so.load_bias)
                 }
             }
         }
@@ -178,12 +206,70 @@ impl<'a> Linker<'a> {
         None
     }
 
-    // TODO: add traits to SharedObject and Executable so they can be relocated by the same function
-    fn relocate(&self, so: &SharedObject) {
-        let symtab = &so.symtab;
-        let strtab = &so.strtab;
-        let bias = so.load_bias;
-        for rela in so.relatab {
+    /// Following the steps below, the dynamic linker and the program "cooperate"
+    /// to resolve symbolic references through the procedure linkage table and the global
+    /// offset table.
+    ///
+    /// 1. When first creating the memory image of the program, the dynamic linker
+    /// sets the second and the third entries in the global offset table to special
+    /// values. Steps below explain more about these values.
+    ///
+    /// 2. Each shared object file in the process image has its own procedure linkage
+    /// table, and control transfers to a procedure linkage table entry only from
+    /// within the same object file.
+    ///
+    /// 3. For illustration, assume the program calls `name1`, which transfers control
+    /// to the label `.PLT1`.
+    ///
+    /// 4. The first instruction jumps to the address in the global offset table entry for
+    /// `name1`. Initially the global offset table holds the address of the following
+    /// pushq instruction, not the real address of `name1`.
+    ///
+    /// 5. Now the program pushes a relocation index (index) on the stack. The relocation
+    /// index is a 32-bit, non-negative index into the relocation table addressed
+    /// by the `DT_JMPREL` dynamic section entry. The designated relocation entry
+    /// will have type `R_X86_64_JUMP_SLOT`, and its offset will specify the
+    /// global offset table entry used in the previous jmp instruction. The relocation
+    /// entry contains a symbol table index that will reference the appropriate
+    /// symbol, `name1` in the example.
+    ///
+    /// 6. After pushing the relocation index, the program then jumps to `.PLT0`, the
+    /// first entry in the procedure linkage table. The pushq instruction places the
+    /// value of the second global offset table entry (GOT+8) on the stack, thus giving
+    /// the dynamic linker one word of identifying information. The program
+    /// then jumps to the address in the third global offset table entry (GOT+16),
+    /// which transfers control to the dynamic linker.
+    ///
+    /// 7. When the dynamic linker receives control, it unwinds the stack, looks at
+    /// the designated relocation entry, finds the symbol’s value, stores the "real"
+    /// address for `name1` in its global offset table entry, and transfers control to
+    /// the desired destination.
+    ///
+    /// 8. Subsequent executions of the procedure linkage table entry will transfer
+    /// directly to `name1`, without calling the dynamic linker a second time. That
+    /// is, the jmp instruction at `.PLT1` will transfer to `name1`, instead of "falling
+    /// through" to the pushq instruction.
+    fn prepare_got(&self, pltgot: *const u64) {
+//        println!("preparing got for: {:?}", so);
+        unsafe {
+            // TODO: fix the mut borrows here
+            // got[0] == the program's address of the _DYNAMIC array, equal to address of the PT_DYNAMIC.ph_vaddr + load_bias
+            // got[1] == "is the pointer to a data structure that the dynamic linker manages. This data structure is a linked list of nodes corresponding to the symbol tables for each shared library linked with the program. When a symbol is to be resolved by the linker, this list is traversed to find the appropriate symbol."
+            // got[2] == the dynamic linker's runtime symbol resolver
+            let second_entry = pltgot.offset(1) as *mut u64;
+            let third_entry = pltgot.offset(2) as *mut u64;
+            let working_set_ptr:*const HashMap<String, SharedObject> = &*(self.working_set);
+            *second_entry = working_set_ptr as u64;
+            *third_entry = _dryad_resolve_symbol as u64;
+            println!("SO got setup: {:?}:0x{:x} {:?}:0x{:x}", second_entry, *second_entry, third_entry, *third_entry);
+        }
+    }
+
+    fn relocate<R : Relocatable<'a>>(&self, object: &R) {
+        let symtab = &object.symtab();
+        let strtab = &object.strtab();
+        let bias = object.load_bias();
+        for rela in object.relatab() {
             let typ = rela::r_type(rela.r_info);
             let sym = rela::r_sym(rela.r_info); // index into the sym table
             let symbol = &symtab[sym as usize];
@@ -202,16 +288,42 @@ impl<'a> Linker<'a> {
                     // resolve symbol;
                     // 1. start with exe, then next in needed, then next until symbol found
                     // 2. use gnu_hash with symbol name to get sym info
-                    let symbol = self.find_symbol(name).unwrap();
-                    unsafe { *reloc = symbol.st_value as u64; }
+                    if let Some(symbol) = self.find_symbol(name) {
+                        unsafe { *reloc = symbol; }
+                    }
                 },
                 // S + A
                 rela::R_X86_64_64 => {
                     // TODO: this is inaccurate because find_symbol is inaccurate
-                    let symbol = self.find_symbol(name).unwrap();
-                    unsafe { *reloc = (rela.r_addend + symbol.st_value as i64) as u64; }
+                    if let Some(symbol) = self.find_symbol(name) {
+                        unsafe { *reloc = (rela.r_addend + symbol as i64) as u64; }
+                    }
                 }
                 _ => ()
+            }
+        }
+
+        self.prepare_got(object.pltgot());
+
+        // TODO: or the SO has the DT_BIND_NOW, and also some shit in the flags
+        if !self.config.bind_now { return }
+
+        // x86-64 ABI, pg. 78:
+        // > Much as the global offset table redirects position-independent address calculations
+        // > to absolute locations, the procedure linkage table redirects position-independent
+        // > function calls to absolute locations.
+        for rela in object.pltrelatab() {
+            let typ = rela::r_type(rela.r_info);
+            let sym = rela::r_sym(rela.r_info); // index into the sym table
+            let symbol = &symtab[sym as usize];
+            let name = &strtab[symbol.st_name as usize];
+            let reloc = (rela.r_offset + bias) as *mut u64;
+
+            if let Some(symbol_address) = self.find_symbol(name) {
+                println!("resolving to {} to 0x{:x}", name, symbol_address);
+                unsafe { *reloc = symbol_address; }
+            } else {
+                println!("<dryad> Warning, no resolution for {}", name);
             }
         }
     }
@@ -249,14 +361,14 @@ impl<'a> Linker<'a> {
     /// Main staging point for linking the executable dryad received
     /// (Experimental): Responsible for parallel execution and thread joining
     /// 1. First loads all the shared object dependencies and joins the result
-    /// 2. Then, relocates all the shared object dependencies and joins the result
+    /// 2. Then, creates the link map, and then relocates all the shared object dependencies and joins the result
     /// 3. Finally, relocates the executable, and then transfers control
     pub fn link_executable(&mut self, image: Executable) -> Result<(), String> {
 
         // 1. load all
 
         // TODO: transfer ownership of libs to the linker, so it can be parallelized
-        for lib in image.needed {
+        for lib in &image.libs {
             // shared_object <- load(lib);
             // if has unloaded lib deps, link(shared_object)
             try!(self.load(lib));
@@ -268,20 +380,19 @@ impl<'a> Linker<'a> {
         // 2. relocate all
         // TODO: after _all_ SharedObject have been loaded, it is safe to relocate if we stick to ELF symbol search rule of first search executable, then in each of DT_NEEDED in order, then deps of first DT_NEEDED, and if not found, then deps of second DT_NEEDED, etc., i.e., breadth-first search.  Why this is allowed to continue past the executable's _OWN_ dependency list is anyone's guess; a penchant for chaos perhaps?
         // Neverthless, for parallel dryad, we have to wait until all the binaries are loaded and then relocate each in turn.
+        // TODO: add try here
         for so in self.working_set.values() {
-            self.relocate(&so);
+            self.relocate(so);
         }
 
         // <join>
 
         // 3. relocate executable and transfer control
-        // relocate the executable
-//        unsafe {
-        // TODO: move this into image init as well
-//            let relas = relocate::get_relocations(image.load_bias, image.dynamic);
-//            println!("Relas:\n  {:#?}", relas);
-//            relocate::relocate(image.load_bias, relas, image.symtab, image.strtab);
-//        }
+
+        self.relocate(&image);
+
+        // we safely loaded and relocated everything, so we can now forget the working_set so it doesn't segfault when we try to access it back again after passing through assembly to `dryad_resolve_symbol`, which from the compiler's perspective means it needs to be dropped
+        mem::forget(&self.working_set);
 
         Ok (())
     }

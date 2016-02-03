@@ -8,6 +8,15 @@ _start:
         retq
 
         .text
+        .globl _dryad_resolve_symbol
+        .type _dryad_resolve_symbol, @function
+_dryad_resolve_symbol:
+        mov %rsp, %rdi
+	andq $-16, %rsp
+        callq dryad_resolve_symbol
+        jmpq *%rax
+
+	.text
         .globl _print
         .type _print, @function
 _print:

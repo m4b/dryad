@@ -36,6 +36,7 @@ If you don't know anything about dynamic linking, that's totally ok, no one real
 5. [sco dynamic linking document](http://www.sco.com/developers/gabi/latest/ch5.dynamic.html)
 6. [iecc dynamic linking article](http://www.iecc.com/linker/linker10.html)
 7. [ELF loading tutorial](http://www.gelato.unsw.edu.au/IA64wiki/LoadingELFFiles)
+8. [Info on the GOT[0] - GOT[2] values](http://users.eecs.northwestern.edu/~kch479/docs/notes/linking.html)
 8. `man ld-so` for dynamic linking basics
 9. `man dlopen` for runtime dynamic linking basics
 10. `man 3 getauxval` for information on the auxiliary vector passed by the kernel to programs
