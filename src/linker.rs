@@ -148,6 +148,8 @@ pub extern fn dryad_resolve_symbol (raw_stack_ptr: *const u64) -> u64 {
         println!("raw_stack_ptr: {:?} -> 0x{:x} 0x{:x} 0x{:x} 0x{:x}", raw_stack_ptr, *raw_stack_ptr, *raw_stack_ptr.offset(1), *raw_stack_ptr.offset(2), *raw_stack_ptr.offset(3));
 
 
+        // TODO: it just dawned on me that the access that's segfaulting might be because the stack isn't setup with the proper arguments coming from the _program_ and not the arguments given during the call?
+
         // more hacks: just a name, address pair to the working set; TODO: replace with link map address
         let pair = Box::from_raw((*raw_stack_ptr) as *mut (*const str, *mut HashMap<String, SharedObject>));
 
