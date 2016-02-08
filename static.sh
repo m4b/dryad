@@ -29,6 +29,8 @@ $PREFIX/bin/rustc --target=x86_64-unknown-linux-musl src/lib.rs -g --emit obj -o
 #searching /usr/lib/ for __gcc_personality_v0:
 #           122e0 __gcc_personality_v0 (600) -> /usr/lib/libgcc_s.so.1 [libgcc_s.so.1]
 
-ld --gc-sections -I/tmp/$SONAME -lc -L$LIB -soname $SONAME -pie -static -Bsymbolic -nostdlib -shared -e _start -o $SONAME start.o dryad.o "$RUSTLIB/libstd-$RUSTHASH.rlib" "$RUSTLIB/libcore-$RUSTHASH.rlib" "$RUSTLIB/librand-$RUSTHASH.rlib" "$RUSTLIB/liballoc-$RUSTHASH.rlib" "$RUSTLIB/libcollections-$RUSTHASH.rlib" "$RUSTLIB/librustc_unicode-$RUSTHASH.rlib" "$RUSTLIB/liballoc_system-$RUSTHASH.rlib" $LIB/libresolv.a $LIB/libunwind.a $LIB/libm.a $LIB/libc.a
+#add -E to force all symbols to be exported, good for testing
+
+ld --gc-sections -I/tmp/$SONAME -lc -L$LIB -soname $SONAME -pie -static -Bsymbolic -nostdlib -shared -e _start -o $SONAME start.o dryad.o "$RUSTLIB/libstd-$RUSTHASH.rlib" "$RUSTLIB/libcore-$RUSTHASH.rlib" "$RUSTLIB/librand-$RUSTHASH.rlib" "$RUSTLIB/liballoc-$RUSTHASH.rlib" "$RUSTLIB/libcollections-$RUSTHASH.rlib" "$RUSTLIB/librustc_unicode-$RUSTHASH.rlib" "$RUSTLIB/liballoc_system-$RUSTHASH.rlib" "$RUSTLIB/libcompiler-rt.a" $LIB/libresolv.a $LIB/libunwind.a $LIB/libm.a $LIB/libc.a
 
 cp $SONAME /tmp/

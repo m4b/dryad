@@ -112,6 +112,7 @@ fn num_digits_t() {
     assert_eq!(num_digits(999), 3);
 }
 
+#[no_mangle]
 pub unsafe extern fn write_u64(i: u64, base16: bool) {
     if base16 {
         write(to_hex(&i, &mut [0; 16]));
@@ -232,10 +233,13 @@ pub mod mmap {
     pub const PROT_GROWSUP:isize = 0x02000000; /* Extend change to start of growsup vma (mprotect only).  */
 
     /* Sharing types (must choose one and only one of these).  */
+    pub const MAP_FILE:isize = 0x0; /* no flag bits to map a file  */
     pub const MAP_SHARED:isize = 0x01; /* Share changes.  */
     pub const MAP_PRIVATE:isize = 0x02; /* Changes are private.  */
     pub const MAP_ANONYMOUS:isize = 0x20; // just guessing, this is wrapped in a ifdef with __MAP_ANONYMOUS as the value
     /* Other flags.  */
+    pub const MAP_DENYWRITE:isize = 0x800;
+    pub const MAP_COPY:isize = MAP_PRIVATE | MAP_DENYWRITE;
     pub const MAP_FIXED:isize = 0x10; /* Interpret addr exactly.  */
 
     /// map failed, from sys/mman.h, technically ((void *) - 1) ...

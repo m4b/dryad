@@ -1,4 +1,5 @@
-/// TODO: parse and return flags, add as entry to the struct
+/// TODO: parse and return flags per DSO, add as entry to the struct
+/// TODO: fix the high address mapperr for `__libc_start_main`
 
 use std::fs::File;
 use std::io::Read;
@@ -6,6 +7,7 @@ use std::io::Read;
 //use std::io::SeekFrom::{ Start };
 use std::os::unix::io::AsRawFd;
 use std::slice;
+//use std::mem;
 use std::os::raw::{c_int};
 
 use utils::mmap;
@@ -86,14 +88,17 @@ fn compute_load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u
 }
 
 #[inline(always)]
-fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u64, u64), String> {
+fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u64, u64, u64), String> {
 
     let (size, min_vaddr, max_vaddr) = compute_load_size(&phdrs);
 
     let mmap_flags = mmap::MAP_PRIVATE | mmap::MAP_ANONYMOUS;
     let start = unsafe { mmap::mmap(0 as *const u64,
                                     size,
-                                    mmap::PROT_NONE,
+                                    // TODO: this is _UNSAFE_:
+                                    // for now, using PROT_NONE seems to give SEGV_ACCERR on execution of PT_LOAD mmaped segments (i.e., operation not allowed on mapped object)
+                                    mmap::PROT_EXEC | mmap::PROT_READ | mmap::PROT_WRITE,
+//                                    mmap::PROT_NONE,
                                     mmap_flags as c_int,
                                     -1,
                                     0) };
@@ -105,9 +110,10 @@ fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u
     } else {
 
         let load_bias = start - min_vaddr;
-        println!("Reserved {:x} bytes @ 0x{:x} with bias {:x}", size, start, load_bias);
+        let end = start + size as u64;
+        println!("Reserved {:#x} - {:#x}", start, (start + size as u64));
 
-        Ok((start, load_bias))
+        Ok((start, load_bias, end))
     }
 }
 
@@ -176,7 +182,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
     let symtab = sym::get_symtab(symtab_data as *const sym::Sym, num_syms as usize);
 
     // 2. Reserve address space with anon mmap
-    let (start, load_bias) = try!(reserve_address_space(&phdrs));
+    let (start, load_bias, end) = try!(reserve_address_space(&phdrs));
 
     // semi-hack with adding the load bias right now, but probably fine
     let relatab = unsafe { rela::get(link_info.rela + load_bias, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize) };
@@ -231,14 +237,31 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
             }
         }
 
-        // other more boring shit to do with zero'd out extra pages if too big, etc.
+        // TODO: other more boring shit to do with zero'd out extra pages if too big, etc.
         //seg_file_end = page::page_end(seg_file_end);
     }
 
+    // TODO: i believe we'll move calling the constructors to the relocation phase, once the dependency resolution has run and has flattened the list into a linear depends upon sequence
+    // call constructors:
+
+    /*
+    if link_info.init != 0 {
+        unsafe {
+            println!("Calling constructor @ {:#x} for {}", link_info.init + load_bias, soname);
+            let init: (fn() -> ()) = mem::transmute::<u64, (fn() -> ())>(link_info.init + load_bias);
+            init();
+        }
+    }
+    */
+
+    println!("Done");
+
     let shared_object = SharedObject {
-        name: soname.to_string(),
+        name: soname.to_string(), // this gets corrupted if we _don't_ mem::forget all of dryad
         load_bias: load_bias,
         libs: needed,
+        map_begin: start,
+        map_end: end,
         // TODO: mmap phdrs ? i don't think we need them so probably not
         phdrs: phdrs.to_owned(),
         dynamic: dynamic,

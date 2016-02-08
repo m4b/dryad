@@ -1,12 +1,22 @@
+// TODO: LOAD THE VDSO
 // TODO: implement the gnu symbol lookup with bloom filter
+// TODO: use link_map
+// TODO: compute flattened dependency list and relocate in order (not using hashmap values)
 // start linking some symbols!
 use std::collections::HashMap;
 use std::boxed::Box;
 use std::fmt;
 use std::mem;
 use std::fs::File;
-//use std::fs::OpenOptions;
 use std::path::Path;
+
+/*
+use scoped_thread::Pool;
+use std::fs::OpenOptions;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::panic;
+*/
 
 use binary::elf::header;
 use binary::elf::program_header;
@@ -16,13 +26,10 @@ use binary::elf::rela;
 use binary::elf::loader;
 use binary::elf::image::{ Relocatable, Executable, SharedObject} ;
 
+use link_map;
 use kernel_block;
 use auxv;
 use relocate;
-
-#[no_mangle]
-//pub static LINKER_ADDR: Option<&'static mut Linker<'static>> = None;
-//pub static LINKER_ADDR: u64 = 0;
 
 /// The internal config the dynamic linker generates from the environment variables it receives.
 struct Config<'a> {
@@ -114,16 +121,16 @@ extern {
 /// TODO: remove working set from mem::forget as the got[1] entry, and instead add the flattened link_map as the rendevous structure that is one-time allocated and then forgotten (then reconstituted back in dryad_resolve_symbol)
 /// TODO: add lib vector or lib working_set and lib finished_set
 /// TODO: Change permissions on most of these fields
-pub struct Linker<'a> {
+pub struct Linker<'process> {
     // TODO: maybe remove base
     pub base: u64,
     pub load_bias: u64,
     pub vdso: u64,
-    pub ehdr: &'a header::Header,
-    pub phdrs: &'a [program_header::ProgramHeader],
-    pub dynamic: &'a [dyn::Dyn],
-    config: Config<'a>,
-    working_set: Box<HashMap<String, SharedObject<'a>>>,
+    pub ehdr: &'process header::Header,
+    pub phdrs: &'process [program_header::ProgramHeader],
+    pub dynamic: &'process [dyn::Dyn],
+    config: Config<'process>,
+    working_set: Box<HashMap<String, SharedObject<'process>>>,
     // TODO: add a set of SharedObject names which a dryad thread inserts into after stealing work to load a SharedObject;
     // this way when other threads check to see if they should load a dep, they can skip from adding it to the set because it's being worked on
     // TODO: lastly, must determine a termination condition to that indicates all threads have finished recursing and no more work is waiting, and hence can transition to the relocation stage
@@ -140,21 +147,43 @@ pub extern fn dryad_resolve_symbol (raw_stack_ptr: *const u64) -> u64 {
     unsafe {
         println!("raw_stack_ptr: {:?} -> 0x{:x} 0x{:x} 0x{:x} 0x{:x}", raw_stack_ptr, *raw_stack_ptr, *raw_stack_ptr.offset(1), *raw_stack_ptr.offset(2), *raw_stack_ptr.offset(3));
 
-        let working_set = Box::from_raw((*raw_stack_ptr) as *mut HashMap<String, SharedObject>);
+
+        // more hacks: just a name, address pair to the working set; TODO: replace with link map address
+        let pair = Box::from_raw((*raw_stack_ptr) as *mut (*const str, *mut HashMap<String, SharedObject>));
+
+        let name:&'static str = mem::transmute(pair.0);
+        let working_set = Box::from_raw(pair.1);
 
         let relocation_index = *raw_stack_ptr.offset(1);
+        println!("Reconstructed  {:#?} with idx: {}", name, relocation_index);
+//        println!("Reconstructed working set: {:#?} with idx: {} for {:#?}", working_set, relocation_index, name);
 
-        println!("Reconstructed working set: {:#?} with idx: {}", working_set, relocation_index);
+        // HACKS, all HACKS: experimenting with dynamic symbol resolution, but don't have link map setup; currently `__libc_start_main` dies at `cmpq   $0x0,0x10(%rax,%rsi,1)` in `_new_exitfn` because accesses an address that's too high for the mmap'd segments...
+        for so in working_set.values() {
+            println!("<dryad_resolve_symbol> searching {} for {}", so.name, name);
+            for sym in so.symtab {
+                let symname = &so.strtab[sym.st_name as usize];
+//                println!("<dryad_resolve_symbol> sym: {}", symname);
+                if symname == "__libc_start_main" && relocation_index == 1 {
+                    println!("<dryad_resolve_symbol> Symbol \"{:?}\" found in {}", symname, so.name);
+                    return sym.st_value + so.load_bias
+                }
+                if symname == "printf" && relocation_index == 2 {
+                    println!("<dryad_resolve_symbol> Symbol \"{:?}\" found in {}", symname, so.name);
+                    return sym.st_value + so.load_bias
+                }
 
-        0xdeadbeef
+            }
+        }
+        0xdeadbeef // lel
     }
 }
 
 /// TODO:
 /// 1. add config logic path based on env variables
 /// 2. be able to link against linux vdso
-impl<'a> Linker<'a> {
-    pub fn new<'process> (base: u64, block: &'process kernel_block::KernelBlock) -> Result<Linker<'process>, &'static str> {
+impl<'process> Linker<'process> {
+    pub fn new<'kernel> (base: u64, block: &'kernel kernel_block::KernelBlock) -> Result<Linker<'kernel>, &'static str> {
         unsafe {
             let ehdr = header::unsafe_as_header(base as *const u64);
             let addr = (base + ehdr.e_phoff) as *const program_header::ProgramHeader;
@@ -249,23 +278,37 @@ impl<'a> Linker<'a> {
     /// directly to `name1`, without calling the dynamic linker a second time. That
     /// is, the jmp instruction at `.PLT1` will transfer to `name1`, instead of "falling
     /// through" to the pushq instruction.
-    fn prepare_got(&self, pltgot: *const u64) {
+    fn prepare_got<'a> (&self, pltgot: *const u64, name: &'a str) {
 //        println!("preparing got for: {:?}", so);
         unsafe {
             // TODO: fix the mut borrows here
             // got[0] == the program's address of the _DYNAMIC array, equal to address of the PT_DYNAMIC.ph_vaddr + load_bias
             // got[1] == "is the pointer to a data structure that the dynamic linker manages. This data structure is a linked list of nodes corresponding to the symbol tables for each shared library linked with the program. When a symbol is to be resolved by the linker, this list is traversed to find the appropriate symbol."
-            // got[2] == the dynamic linker's runtime symbol resolver
             let second_entry = pltgot.offset(1) as *mut u64;
+            // got[2] == the dynamic linker's runtime symbol resolver
             let third_entry = pltgot.offset(2) as *mut u64;
-            let working_set_ptr:*const HashMap<String, SharedObject> = &*(self.working_set);
-            *second_entry = working_set_ptr as u64;
+            let pair = Box::new((name as *const str, &*(self.working_set) as *const HashMap<String, SharedObject>));
+            let pair_ptr: *mut (*const str, *const HashMap<String, SharedObject>) = Box::into_raw(pair);
+//let working_set_ptr:*const HashMap<String, SharedObject> = &*(self.working_set);
+//            *second_entry = working_set_ptr as u64;
+            *second_entry = pair_ptr as u64;
             *third_entry = _dryad_resolve_symbol as u64;
             println!("SO got setup: {:?}:0x{:x} {:?}:0x{:x}", second_entry, *second_entry, third_entry, *third_entry);
         }
     }
 
-    fn relocate<R : Relocatable<'a>>(&self, object: &R) {
+    #[no_mangle]
+    fn resolve_with_ifunc (&self, addr: u64) -> u64 {
+        unsafe {
+            let ifunc = mem::transmute::<u64, (fn() -> *const u64)>(addr);
+            let res = ifunc();
+            println!("ifunc says: {:?}", res);
+            res as u64
+        }
+    }
+
+    // TODO: remove the is_executable hack used for testing
+    fn relocate<R : Relocatable<'process>> (&self, object: &'process R, is_executable: bool) {
         let symtab = &object.symtab();
         let strtab = &object.strtab();
         let bias = object.load_bias();
@@ -276,7 +319,7 @@ impl<'a> Linker<'a> {
             let name = &strtab[symbol.st_name as usize];
             let reloc = (rela.r_offset + bias) as *mut u64;
             // TODO: remove this print, misleading on anything other than RELATIVE relocs
-            //println!("relocating {}({:?}) with addend {:x} to {:x}", name, reloc, rela.r_addend, (rela.r_addend + bias as i64));
+//            println!("relocating {} {}({:?}) with addend {:x} to {:x}", name, (rela::type_to_str(typ)), reloc, rela.r_addend, (rela.r_addend + bias as i64));
             match typ {
                 // B + A
                 rela::R_X86_64_RELATIVE => {
@@ -298,15 +341,16 @@ impl<'a> Linker<'a> {
                     if let Some(symbol) = self.find_symbol(name) {
                         unsafe { *reloc = (rela.r_addend + symbol as i64) as u64; }
                     }
-                }
+                },
+                // TODO: add erro checking
                 _ => ()
             }
         }
 
-        self.prepare_got(object.pltgot());
+        self.prepare_got(object.pltgot(), &object.name());
 
         // TODO: or the SO has the DT_BIND_NOW, and also some shit in the flags
-        if !self.config.bind_now { return }
+        if is_executable || !self.config.bind_now { return }
 
         // x86-64 ABI, pg. 78:
         // > Much as the global offset table redirects position-independent address calculations
@@ -319,11 +363,24 @@ impl<'a> Linker<'a> {
             let name = &strtab[symbol.st_name as usize];
             let reloc = (rela.r_offset + bias) as *mut u64;
 
-            if let Some(symbol_address) = self.find_symbol(name) {
-                println!("resolving to {} to 0x{:x}", name, symbol_address);
-                unsafe { *reloc = symbol_address; }
-            } else {
-                println!("<dryad> Warning, no resolution for {}", name);
+            match typ {
+                rela::R_X86_64_JUMP_SLOT => {
+                    if let Some(symbol_address) = self.find_symbol(name) {
+                        println!("resolving {} to {:#x}", name, symbol_address);
+                        unsafe { *reloc = symbol_address; }
+                    } else {
+                        println!("<dryad> Warning, no resolution for {}", name);
+                    }
+                },
+                // fun @ (B + A)()
+                rela::R_X86_64_IRELATIVE => {
+                    let addr = rela.r_addend + bias as i64;
+                    //println!("IRELATIVE: bias: {:#x} addend: {:#x} addr: {:#x}", bias, rela.r_addend, addr);
+                    // TODO: just inline this call here, it's so simple, doesn't need a function
+                    unsafe { *reloc = self.resolve_with_ifunc(addr as u64); }
+                },
+                // TODO: add error checking
+                _ => ()
             }
         }
     }
@@ -343,7 +400,7 @@ impl<'a> Linker<'a> {
         // TODO: properly open the file using soname -> path with something like `resolve_soname`
         // TODO: if soname ∉ linker.loaded { then do this }
         // TODO: add write true?
-        // match OpenOptions::new().read(true).write(false).open(Path::new("/usr/lib/").join(soname)) {
+//        match OpenOptions::new().read(true).write(true).open(Path::new("/tmp/lib/").join(soname)) {
         match File::open(Path::new("/usr/lib/").join(soname)) {
             Ok (mut fd) => {
 
@@ -363,6 +420,7 @@ impl<'a> Linker<'a> {
     /// 1. First loads all the shared object dependencies and joins the result
     /// 2. Then, creates the link map, and then relocates all the shared object dependencies and joins the result
     /// 3. Finally, relocates the executable, and then transfers control
+    #[no_mangle]
     pub fn link_executable(&mut self, image: Executable) -> Result<(), String> {
 
         // 1. load all
@@ -374,22 +432,21 @@ impl<'a> Linker<'a> {
             try!(self.load(lib));
         }
 
-        // <join>
         //println!("{:#?}", self.working_set);
-
+        // <join>
         // 2. relocate all
         // TODO: after _all_ SharedObject have been loaded, it is safe to relocate if we stick to ELF symbol search rule of first search executable, then in each of DT_NEEDED in order, then deps of first DT_NEEDED, and if not found, then deps of second DT_NEEDED, etc., i.e., breadth-first search.  Why this is allowed to continue past the executable's _OWN_ dependency list is anyone's guess; a penchant for chaos perhaps?
-        // Neverthless, for parallel dryad, we have to wait until all the binaries are loaded and then relocate each in turn.
-        // TODO: add try here
+
+        // TODO: flatten working set into the link map which can then be iterated over?, or revise other details
         for so in self.working_set.values() {
-            self.relocate(so);
+            self.relocate(so, false);
         }
 
         // <join>
-
         // 3. relocate executable and transfer control
 
-        self.relocate(&image);
+        println!("Relocating executable");
+        self.relocate(&image, true);
 
         // we safely loaded and relocated everything, so we can now forget the working_set so it doesn't segfault when we try to access it back again after passing through assembly to `dryad_resolve_symbol`, which from the compiler's perspective means it needs to be dropped
         mem::forget(&self.working_set);
@@ -398,7 +455,7 @@ impl<'a> Linker<'a> {
     }
 }
 
-impl<'a> fmt::Debug for Linker<'a> {
+impl<'process> fmt::Debug for Linker<'process> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "base: {:x} load_bias: {:x} vdso: {:x} ehdr: {:#?} phdrs: {:#?} dynamic: {:#?} Config: {:#?}",
                self.base,

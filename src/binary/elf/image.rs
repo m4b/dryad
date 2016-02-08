@@ -34,7 +34,13 @@ pub struct LinkInfo {
     pub versym: u64,
     pub init: u64,
     pub fini: u64,
+    pub init_array: u64,
+    pub init_arraysz: usize,
+    pub fini_array: u64,
+    pub fini_arraysz: usize,
     pub needed_count: usize,
+    pub flags: u64,
+    pub flags_1: u64,
 }
 
 impl LinkInfo {
@@ -58,7 +64,13 @@ impl LinkInfo {
         let mut versym = 0;
         let mut init = 0;
         let mut fini = 0;
+        let mut init_array = 0;
+        let mut init_arraysz = 0;
+        let mut fini_array = 0;
+        let mut fini_arraysz = 0;
         let mut needed_count = 0;
+        let mut flags = 0;
+        let mut flags_1 = 0;
         for dyn in dynamic {
             match dyn.d_tag {
                 dyn::DT_RELA => rela = dyn.d_val + bias, // .rela.dyn
@@ -80,7 +92,13 @@ impl LinkInfo {
                 dyn::DT_VERSYM => versym = dyn.d_val + bias,
                 dyn::DT_INIT => init = dyn.d_val + bias,
                 dyn::DT_FINI => fini = dyn.d_val + bias,
+                dyn::DT_INIT_ARRAY => init_array = dyn.d_val + bias,
+                dyn::DT_INIT_ARRAYSZ => init_arraysz = dyn.d_val,
+                dyn::DT_FINI_ARRAY => fini_array = dyn.d_val + bias,
+                dyn::DT_FINI_ARRAYSZ => fini_arraysz = dyn.d_val,
                 dyn::DT_NEEDED => needed_count += 1,
+                dyn::DT_FLAGS => flags = dyn.d_val,
+                dyn::DT_FLAGS_1 => flags_1 = dyn.d_val,
                 _ => ()
             }
         }
@@ -105,7 +123,13 @@ impl LinkInfo {
             versym: versym,
             init: init,
             fini: fini,
+            init_array: init_array,
+            init_arraysz: init_arraysz as usize,
+            fini_array: fini_array,
+            fini_arraysz: fini_arraysz as usize,
             needed_count: needed_count,
+            flags: flags,
+            flags_1: flags_1,
         }
     }
 }
@@ -146,7 +170,6 @@ pub trait Relocatable<'a> {
     fn pltrelatab(&self) -> &'a[Rela];
     fn pltgot(&self) -> *const u64;
 }
-
 
 /// The main executable, whose lifetime is tied to the lifetime of the process itself, which is - itself!
 /// This is also incidentally where we receive the in-memory data like the program headers, the lib strings, the strtab, etc:
@@ -255,6 +278,8 @@ impl<'process> fmt::Debug for Executable<'process> {
 pub struct SharedObject<'mmap> {
     pub name: String,
     pub load_bias: u64,
+    pub map_begin: u64,
+    pub map_end: u64,
     pub libs: Vec<&'mmap str>,
     pub phdrs: Vec<ProgramHeader>,
     pub dynamic: &'mmap[Dyn],
@@ -295,3 +320,9 @@ impl<'mmap> Relocatable<'mmap> for SharedObject<'mmap> {
         self.pltgot
     }
 }
+
+unsafe impl<'a> Send for Executable<'a> {}
+unsafe impl<'a> Sync for Executable<'a> {}
+
+unsafe impl<'a> Send for SharedObject<'a> {}
+unsafe impl<'a> Sync for SharedObject<'a> {}

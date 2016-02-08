@@ -3,6 +3,8 @@
 #![feature(asm, libc)]
 #![no_main]
 
+//#![feature(std_panic, recover)]
+
 #![allow(dead_code)] // yells about consts otherwise
 #![allow(unused_variables)]
 
@@ -15,6 +17,7 @@ mod utils;
 mod binary;
 mod relocate;
 mod link_map;
+mod scoped_thread;
 pub mod linker;
 
 use std::mem;
@@ -39,6 +42,7 @@ extern {
     /// which in our case then calls _back_ into `dryad_init` with the pointer to the raw arguments that form the kernel block
     /// see `arch/x86/asm.s`
     fn _start();
+    fn _myfork();
 }
 
 fn dryad_main (dryad: &mut linker::Linker, block: &kernel_block::KernelBlock) -> Result<(), String> {
@@ -54,6 +58,7 @@ fn dryad_main (dryad: &mut linker::Linker, block: &kernel_block::KernelBlock) ->
     Ok(try!(dryad.link_executable(main_image)))
 }
 
+/// TODO: _start needs to align the stack, which is why block.unsafe_print() isn't printing correctly I suspect
 #[no_mangle]
 pub extern fn _dryad_init (raw_args: *const u64) -> u64 {
 
@@ -91,6 +96,7 @@ pub extern fn _dryad_init (raw_args: *const u64) -> u64 {
                 // but segfaults when printf is called (obviously)
                 // since we've done no dynamic linking
                 //_exit(0);
+                // if we don't forget the entire dryad linker then internal strings get corrupted, like SharedObject.name
                 mem::forget(dryad);
                 entry
             }
