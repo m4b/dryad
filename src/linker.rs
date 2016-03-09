@@ -24,6 +24,7 @@ use binary::elf::dyn;
 //use binary::elf::sym;
 use binary::elf::rela;
 use binary::elf::loader;
+use binary::elf::strtab;
 use binary::elf::image::{ Relocatable, Executable, SharedObject} ;
 
 use kernel_block;
@@ -55,7 +56,7 @@ impl<'a> Config<'a> {
             var != "" } else { false };
         let debug = if let Some (var) = block.getenv("LD_DEBUG") {
             var != "" } else { false };
-        // TODO: FIX THIS IS NOT VALID
+        // TODO: FIX THIS IS NOT VALID and massively unsafe
         let secure = block.getauxval(auxv::AT_SECURE).unwrap() != 0;
         // TODO: add different levels of verbosity
         let verbose = if let Some (var) = block.getenv("LD_VERBOSE") {
@@ -120,7 +121,7 @@ pub extern fn _dryad_fini() {
 */
 
 /// TODO: i think this is false; we may need to relocate R_X86_64_GLOB_DAT and R_X86_64_64
-/// after a system update DTPMOD64 is showing up in relocs, because wtf?
+/// DTPMOD64 is showing up in relocs if we make dryad -shared instead of -pie.  and this is because it leaves local executable TLS model because the damn hash map uses random TLS data.  `working_set` has been the bane of my life in this project
 /// private linker relocation function; assumes dryad _only_
 /// contains X86_64_RELATIVE relocations, which should be true
 fn relocate_linker(bias: u64, relas: &[rela::Rela]) {
@@ -167,7 +168,7 @@ pub struct Linker<'process> {
     config: Config<'process>,
     working_set: Box<HashMap<String, SharedObject<'process>>>,
     link_map_order: Vec<String>,
-    link_map: Vec<LinkData>,
+    link_map: Vec<LinkData<'process>>,
     // TODO: add a set of SharedObject names which a dryad thread inserts into after stealing work to load a SharedObject;
     // this way when other threads check to see if they should load a dep, they can skip from adding it to the set because it's being worked on
     // TODO: lastly, must determine a termination condition to that indicates all threads have finished recursing and no more work is waiting, and hence can transition to the relocation stage
@@ -369,6 +370,7 @@ impl<'process> Linker<'process> {
             println!("<dryad> empty pltgot for {}", name);
             return
         }
+        // TODO: I had to go and break this working version to use a custom vector of LinkData because there's something wrong with me.
         unsafe {
             // TODO: fix the mut borrows here
             // got[0] == the program's address of the _DYNAMIC array, equal to address of the PT_DYNAMIC.ph_vaddr + load_bias
@@ -383,6 +385,7 @@ impl<'process> Linker<'process> {
             *second_entry = pair_ptr as u64;
             */
             println!("LINK MAP PTR: {:#?}", self.link_map.as_ptr());
+            // TODO: get the actual index of the so
             let pair = Box::new((0 as usize, self.link_map.as_ptr()));
             *second_entry = Box::into_raw(pair) as u64;
             *third_entry = _dryad_resolve_symbol as u64;
@@ -505,33 +508,32 @@ impl<'process> Linker<'process> {
         }
         println!("<dryad> relocate plt: {} symbols for {}", count, object.name());
     }
-
-    fn build_link_map (&mut self, executable: &'static Executable) {
-// -> Vec<LinkData<'process>>{
-        
-        //let mut link_map = Vec::with_capacity(self.link_map_order.len());
+    
+    // TODO: this will not build because lifetime params are totally off the wall messed up.  thanks to steveklabnik for confirming error messages unusually terse
+    fn build_link_map (&mut self, executable: &Executable) {
         self.link_map.reserve_exact(self.link_map_order.len());
+        /*
         let ld = LinkData {
             addr: executable.base, // check this
             name: executable.name,
-            dynamic: &executable.dynamic,
-            strtab: &executable.strtab,
-            symtab: &executable.symtab,
+            dynamic: executable.dynamic,
+            strtab: executable.strtab,
+            symtab: executable.symtab,
         };
         self.link_map.push(ld);
 
         for link in &self.link_map_order {
-            let so = &self.working_set.get(link).unwrap();
+            let so = self.working_set.get(link).unwrap();
             let ld = LinkData {
                 addr: so.load_bias,
                 name: so.name.as_str(),
-                dynamic: &so.dynamic,
-                strtab: &so.strtab,
-                symtab: &so.symtab,
+                dynamic: so.dynamic,
+                strtab: so.strtab,
+                symtab: so.symtab,
             };
             self.link_map.push(ld);
         }
-        //link_map
+        */
     }
 
     /// Main staging point for linking the executable dryad received
@@ -542,7 +544,7 @@ impl<'process> Linker<'process> {
     #[no_mangle]
     pub fn link_executable(&mut self, image: &Executable) -> Result<(), String> {
 
-        /*
+        /* Fun Fact: uncomment this for ridiculous disaster: runs fine when links itself, but not when it links an executable, because hell
         let v = vec![1, 2, 3, 4];
         let mut guards = vec![];
         for k in 0..1 {
@@ -572,11 +574,8 @@ impl<'process> Linker<'process> {
 
         self.link_map_order.dedup();
         println!("LINK MAP ORDER: {:#?}", self.link_map_order);
-//        let link_map = self.build_link_map(&image);
+        self.build_link_map(image);
 //        println!("LINK MAP: {:#?}", link_map);
-        self.build_link_map(&image);
-
-//        let link_map: Vec<u64> = Vec::with_capacity(self.working_set.len());
 
         // <join>
         // 2. relocate all
@@ -598,8 +597,6 @@ impl<'process> Linker<'process> {
         //
         // is reduced to [exe, libfoo, libbar, libbaz, libderp, libslerp, libmerp]
 
-        // build a primitive link map
-        
         // TODO: determine ld-so's relocation order (_not_ equivalent to it's search order, which is breadth first from needed libs)
         // I think if it weren't for gnu_ifuncs, we could relocate in any order, even with LD_BIND_NOW, but because gnu_ifuncs essentially execute arbitrary code, including calling into the GOT, if the GOT isn't setup and relative relocations, for example, haven't been processed in the binary which has the reference, we're doomed.  Example is a libm ifunc (after matherr) for `__exp_finite` that calls `__get_cpu_features` which resides in libc.
 
@@ -618,7 +615,7 @@ impl<'process> Linker<'process> {
         // 3. relocate executable and transfer control
 
         println!("Relocating executable");
-//        self.relocate_got(image);
+        self.relocate_got(image);
 
         // we safely loaded and relocated everything, so we can now forget the working_set so it doesn't segfault when we try to access it back again after passing through assembly to `dryad_resolve_symbol`, which from the compiler's perspective means it needs to be dropped
         mem::forget(&self.working_set);
