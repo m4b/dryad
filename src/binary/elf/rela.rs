@@ -170,13 +170,17 @@ impl fmt::Debug for Rela {
 /// 2. The binary has already been mmapped (i.e., it's a `SharedObject`), and hence it's safe to return a slice of that memory.
 pub unsafe fn get<'a>(rela: u64, relasz: usize, relaent: usize, relacount: usize) -> &'a[Rela] {
     // TODO: validate relaent, using relacount
-    let count = (relasz / relaent) as usize;
-    /*
-    if count != relacount {
+    if relaent == 0 {
+        &[]
+    } else {
+        let count = (relasz / relaent) as usize;
+        /*
+        if count != relacount {
         panic!("<dryad> computed rela count {} does not match relacount {}", count, relacount)
     }
-    */
-    slice::from_raw_parts(rela as *const Rela, count)
+         */
+        slice::from_raw_parts(rela as *const Rela, count)
+    }
 }
 
 pub unsafe fn get_plt<'a>(jmprel: u64, pltrelsz: usize) -> &'a[Rela] {

@@ -174,23 +174,23 @@ pub trait Relocatable<'a> {
 /// The main executable, whose lifetime is tied to the lifetime of the process itself, which is - itself!
 /// This is also incidentally where we receive the in-memory data like the program headers, the lib strings, the strtab, etc:
 /// everything was already mapped into memory and loaded for us by the kernel.
-pub struct Executable<'process> {
-    pub name: &'process str,
+pub struct Executable {
+    pub name: &'static str,
     pub base: u64,
     pub load_bias: u64,
-    pub libs: Vec<&'process str>, // Consider making this a string so can share easier
-    pub phdrs: &'process[ProgramHeader],
-    pub dynamic: &'process[Dyn],
+    pub libs: Vec<&'static str>,
+    pub phdrs: &'static[ProgramHeader],
+    pub dynamic: &'static[Dyn],
     pub link_info: LinkInfo,
-    pub symtab: &'process[Sym],
-    pub strtab: Strtab<'process>,
-    pub relatab: &'process[Rela],
-    pub pltrelatab: &'process[Rela],
+    pub symtab: &'static[Sym],
+    pub strtab: Strtab<'static>,
+    pub relatab: &'static[Rela],
+    pub pltrelatab: &'static[Rela],
     pub pltgot: *const u64,
 }
 
-impl<'process> Executable<'process> {
-    pub fn new (name: &'process str, phdr_addr: u64, phnum: usize) -> Result<Executable<'process>, String> {
+impl Executable {
+    pub fn new (name: &'static str, phdr_addr: u64, phnum: usize) -> Result<Executable, String> {
         unsafe {
             let addr = phdr_addr as *const ProgramHeader;
             let phdrs = program_header::to_phdr_array(addr, phnum);
@@ -243,23 +243,23 @@ impl<'process> Executable<'process> {
     }
 }
 
-impl<'process> Relocatable<'process> for Executable<'process> {
-    fn name(&'process self) -> &'process str {
+impl Relocatable<'static> for Executable {
+    fn name(&'static self) -> &'static str {
         self.name
     }
-    fn symtab(&self) -> &'process[Sym] {
+    fn symtab(&self) -> &'static[Sym] {
         self.symtab
     }
     fn load_bias(&self) -> u64 {
         self.load_bias
     }
-    fn strtab(&self) -> &Strtab<'process> {
+    fn strtab(&self) -> &Strtab<'static> {
         &self.strtab
     }
-    fn relatab(&self) -> &'process[Rela] {
+    fn relatab(&self) -> &'static[Rela] {
         self.relatab
     }
-    fn pltrelatab(&self) -> &'process[Rela] {
+    fn pltrelatab(&self) -> &'static[Rela] {
         self.pltrelatab
     }
     fn pltgot(&self) -> *const u64 {
@@ -267,7 +267,7 @@ impl<'process> Relocatable<'process> for Executable<'process> {
     }
 }
 
-impl<'process> fmt::Debug for Executable<'process> {
+impl fmt::Debug for Executable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "name: {} base: {:x} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  LinkInfo: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Rela Table: {:#?}\n  Plt Rela Table: {:#?}\n  Needed: {:#?}",
                self.name, self.base, self.load_bias, self.phdrs, self.dynamic, self.link_info, self.strtab, self.symtab, self.relatab, self.pltrelatab, self.libs)
@@ -321,8 +321,8 @@ impl<'mmap> Relocatable<'mmap> for SharedObject<'mmap> {
     }
 }
 
-unsafe impl<'a> Send for Executable<'a> {}
-unsafe impl<'a> Sync for Executable<'a> {}
+unsafe impl Send for Executable {}
+unsafe impl Sync for Executable {}
 
 unsafe impl<'a> Send for SharedObject<'a> {}
 unsafe impl<'a> Sync for SharedObject<'a> {}

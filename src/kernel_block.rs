@@ -10,7 +10,7 @@ pub struct KernelBlock<'a>{
     pub argv: &'a[*const u8],
     pub envc: isize,
     pub env: &'a[*const u8],
-    pub auxv: *const auxv::Elf64_auxv_t,
+    pub auxv: *mut auxv::Elf64_auxv_t,
 }
 
 impl<'b> KernelBlock<'b> {
@@ -58,7 +58,7 @@ impl<'b> KernelBlock<'b> {
                 envc += 1;
             }
             p = p.offset(1);
-            let auxv = p as *const auxv::Elf64_auxv_t;
+            let auxv = p as *mut auxv::Elf64_auxv_t;
             KernelBlock {
                 argc: argc,
                 argv: slice::from_raw_parts(argv, argc as usize),

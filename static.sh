@@ -7,12 +7,14 @@ LIB=$PREFIX/lib
 SONAME=dryad.so.1
 RUSTLIB=$PREFIX/lib/rustlib/x86_64-unknown-linux-musl/lib
 RUSTHASH=db5a760f
-DEPS_STD=
+#DEPS_STD=
 
-export LD_LIBRARY_PATH=$PREFIX/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$PREFIX/lib #appending :$LD_LIBRARY_PATH causes segfault since it grabs libc.so.6 sitting in dryad dir, which has some kind of binary incompat over latest version because why not
 
-clang -c -o start.o src/arch/x86/asm.s
+echo -e "compiling asm..."
+gcc -fPIC -c -o start.o src/arch/x86/asm.s
 
+echo -e "compiling dryad..."
 $PREFIX/bin/rustc --target=x86_64-unknown-linux-musl src/lib.rs -g --emit obj -o dryad.o
 
 # there are still missing symbols:
@@ -30,7 +32,8 @@ $PREFIX/bin/rustc --target=x86_64-unknown-linux-musl src/lib.rs -g --emit obj -o
 #           122e0 __gcc_personality_v0 (600) -> /usr/lib/libgcc_s.so.1 [libgcc_s.so.1]
 
 #add -E to force all symbols to be exported, good for testing
-
-ld --gc-sections -I/tmp/$SONAME -lc -L$LIB -soname $SONAME -pie -static -Bsymbolic -nostdlib -shared -e _start -o $SONAME start.o dryad.o "$RUSTLIB/libstd-$RUSTHASH.rlib" "$RUSTLIB/libcore-$RUSTHASH.rlib" "$RUSTLIB/librand-$RUSTHASH.rlib" "$RUSTLIB/liballoc-$RUSTHASH.rlib" "$RUSTLIB/libcollections-$RUSTHASH.rlib" "$RUSTLIB/librustc_unicode-$RUSTHASH.rlib" "$RUSTLIB/liballoc_system-$RUSTHASH.rlib" "$RUSTLIB/libcompiler-rt.a" $LIB/libresolv.a $LIB/libunwind.a $LIB/libm.a $LIB/libc.a
+echo -e "linking..."
+# using -shared results in DPTMOD64 reloc, and because tls not properly init'd for __tls_get_address (only for local exec) inside of dryad, everything breaks
+ld --gc-sections -I/tmp/$SONAME -lc -L$LIB -soname $SONAME -pie -Bsymbolic -nostdlib -e _start -o $SONAME start.o dryad.o "$RUSTLIB/libstd-$RUSTHASH.rlib" "$RUSTLIB/libcore-$RUSTHASH.rlib" "$RUSTLIB/librand-$RUSTHASH.rlib" "$RUSTLIB/liballoc-$RUSTHASH.rlib" "$RUSTLIB/libcollections-$RUSTHASH.rlib" "$RUSTLIB/librustc_unicode-$RUSTHASH.rlib" "$RUSTLIB/liballoc_system-$RUSTHASH.rlib" "$RUSTLIB/libcompiler-rt.a" $LIB/libresolv.a $LIB/libunwind.a $LIB/libm.a $LIB/libc.a
 
 cp $SONAME /tmp/

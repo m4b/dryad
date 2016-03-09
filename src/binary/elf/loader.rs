@@ -21,7 +21,7 @@ use binary::elf::strtab::Strtab;
 use binary::elf::image::{LinkInfo, SharedObject};
 
 extern {
-    /// libc #defines erro *(__errno_location()) ... so errno isn't a symbol in the actual binary and accesses will segfault us. yay.
+    /// libc #defines errno *(__errno_location()) ... so errno isn't a symbol in the actual binary and accesses will segfault us. yay.
     fn __errno_location() -> *const i32;
 }
 
@@ -148,6 +148,7 @@ fn pflags_to_prot (x:u32) -> isize {
 }
 
 /// Loads an ELF binary from the given fd, mmaps its contents, and returns a SharedObject, whose lifetime is tied to the mmap's, i.e., manually managed
+/// TODO: refactor this code so as much as possible is independent of an `File` parameter
 /// TODO: probably just move this function to image and use it as the impl
 pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, String> {
     // 1. Suck up the elf header and construct the program headers
@@ -253,6 +254,8 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
         }
     }
     */
+    //TODO: make this an optional
+    let pltgot = if link_info.pltgot == 0 { 0 } else { link_info.pltgot + load_bias }; // musl doesn't have a PLTGOT, for example
 
     println!("Done");
 
@@ -270,7 +273,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
         strtab: strtab,
         relatab: relatab,
         pltrelatab: pltrelatab,
-        pltgot: (link_info.pltgot + load_bias) as *const u64,
+        pltgot: pltgot as *const u64,
     };
 
     Ok (shared_object)
