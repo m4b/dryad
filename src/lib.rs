@@ -73,10 +73,10 @@ fn dryad_main (dryad: &mut linker::Linker, block: &kernel_block::KernelBlock) ->
     let name = utils::as_str(block.argv[0]);
     let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
     let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
-    let main_image = try!(binary::elf::image::Executable::new(name, phdr_addr, phnum as usize));
+    let main_image = try!(binary::elf::image::SharedObject::from_executable(name, phdr_addr, phnum as usize));
     println!("Main Image:\n  {:#?}", &main_image);
 
-    dryad.link_executable(&main_image)
+    dryad.link_executable(main_image)
     // TODO: according to the libc implementation, the binary needs to get a stack and argc that looks like it was executed directly --- but the auxv already has the phdr_addr set correctly, so i'm not sure what all that code is for...?
     //maintain_illusion(&block);
 }

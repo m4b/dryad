@@ -174,6 +174,8 @@ pub trait Relocatable<'a> {
 /// The main executable, whose lifetime is tied to the lifetime of the process itself, which is - itself!
 /// This is also incidentally where we receive the in-memory data like the program headers, the lib strings, the strtab, etc:
 /// everything was already mapped into memory and loaded for us by the kernel.
+/// I'd make this static but it breaks _EVERYTHING_
+/// TODO: also consider just adding a new function in SharedObject which creates a single, unified struct for this, and then we can remove the trait, and the other nonsense
 pub struct Executable<'process> {
     pub name: &'process str,
     pub base: u64,
@@ -288,6 +290,62 @@ pub struct SharedObject<'mmap> {
     pub relatab: &'mmap[Rela],
     pub pltrelatab: &'mmap[Rela],
     pub pltgot: *const u64,
+}
+
+impl<'process> SharedObject<'process> {
+
+    pub fn from_executable (name: &'static str, phdr_addr: u64, phnum: usize) -> Result<SharedObject<'process>, String> {
+        unsafe {
+            let addr = phdr_addr as *const ProgramHeader;
+            let phdrs = program_header::to_phdr_array(addr, phnum);
+//            let mut base = 0;
+            let mut load_bias = 0;
+
+            for phdr in phdrs {
+                if phdr.p_type == program_header::PT_PHDR {
+                    load_bias = phdr_addr - phdr.p_vaddr;
+//                    base = phdr_addr - phdr.p_offset;
+                    break;
+                }
+            }
+            // if base == 0 then no PT_PHDR and we should terminate? or kernel should have noticed this and we needn't bother
+
+            if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
+
+                let link_info = LinkInfo::new(dynamic, load_bias);
+                let libs = dyn::get_needed(dynamic, load_bias, link_info.strtab, link_info.needed_count);
+
+                // TODO: swap out the link_info syment with compile time constant SIZEOF_SYM?
+                let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
+                let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
+                let strtab = Strtab::new(link_info.strtab as *const u8, link_info.strsz);
+                let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
+                let pltreltab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
+
+                let pltgot = link_info.pltgot as *const u64;
+
+                Ok (SharedObject {
+                    name: name.to_string(),
+                    load_bias: load_bias,
+                    map_begin: 0,
+                    map_end: 0,
+                    libs: libs,
+                    phdrs: phdrs.to_owned(),
+                    dynamic: dynamic,
+                    symtab: symtab,
+                    strtab: strtab,
+                    relatab: relatab,
+                    pltrelatab: pltreltab,
+                    pltgot: pltgot,
+                })
+
+            } else {
+
+                Err (format!("<dryad> Error: executable {} has no _DYNAMIC array", name))
+            }
+        }
+    }
+
 }
 
 impl<'mmap> fmt::Debug for SharedObject<'mmap> {

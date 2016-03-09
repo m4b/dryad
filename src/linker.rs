@@ -24,8 +24,7 @@ use binary::elf::dyn;
 //use binary::elf::sym;
 use binary::elf::rela;
 use binary::elf::loader;
-use binary::elf::strtab;
-use binary::elf::image::{ Relocatable, Executable, SharedObject} ;
+use binary::elf::image::SharedObject;
 
 use kernel_block;
 use auxv;
@@ -364,7 +363,7 @@ impl<'process> Linker<'process> {
     /// directly to `name1`, without calling the dynamic linker a second time. That
     /// is, the jmp instruction at `.PLT1` will transfer to `name1`, instead of "falling
     /// through" to the pushq instruction.
-    fn prepare_got<'a> (&self, pltgot: *const u64, name: &'a str) {
+    fn prepare_got<'a> (&self, idx: usize, pltgot: *const u64, name: &'a str) {
 //        println!("preparing got for: {:?}", so);
         if pltgot.is_null() {
             println!("<dryad> empty pltgot for {}", name);
@@ -386,7 +385,7 @@ impl<'process> Linker<'process> {
             */
             println!("LINK MAP PTR: {:#?}", self.link_map.as_ptr());
             // TODO: get the actual index of the so
-            let pair = Box::new((0 as usize, self.link_map.as_ptr()));
+            let pair = Box::new((idx, self.link_map.as_ptr()));
             *second_entry = Box::into_raw(pair) as u64;
             *third_entry = _dryad_resolve_symbol as u64;
             println!("<dryad> finished got setup for {} GOT[1] = {:#x} GOT[2] = {:#x}", name, *second_entry, *third_entry);
@@ -404,14 +403,12 @@ impl<'process> Linker<'process> {
     }
 
     // TODO: rela::R_X86_64_GLOB_DAT => this is a symbol resolution and requires full link map data, and _cannot_ be done before everything is relocated
-    // TODO: remove the is_executable hack used for testing
-    fn relocate_got<R : Relocatable<'process>> (&self, object: &'process R) {
-//, lm: &Vec<LinkData<'process>>) {
-        let symtab = &object.symtab();
-        let strtab = &object.strtab();
-        let bias = object.load_bias();
+    fn relocate_got (&self, idx: usize, object: &SharedObject) {
+        let symtab = &object.symtab;
+        let strtab = &object.strtab;
+        let bias = object.load_bias;
         let mut count = 0;
-        for rela in object.relatab() {
+        for rela in object.relatab {
             let typ = rela::r_type(rela.r_info);
             let sym = rela::r_sym(rela.r_info); // index into the sym table
             let symbol = &symtab[sym as usize];
@@ -455,16 +452,16 @@ impl<'process> Linker<'process> {
             }
         }
 
-        println!("<dryad> relocated {} symbols in {}", count, &object.name());
+        println!("<dryad> relocated {} symbols in {}", count, &object.name);
 
-        self.prepare_got(object.pltgot(), &object.name());
+        self.prepare_got(idx, object.pltgot, &object.name);
     }
 
-    fn relocate_plt<Object: Relocatable<'process>> (&self, object: &'process Object, is_executable: bool) {
+    fn relocate_plt (&self, object: &SharedObject, is_executable: bool) {
 
-        let symtab = &object.symtab();
-        let strtab = &object.strtab();
-        let bias = object.load_bias();
+        let symtab = &object.symtab;
+        let strtab = &object.strtab;
+        let bias = object.load_bias;
         let mut count = 0;
 
         // TODO: if we split code starting here into two functions, and loop twice over the dependencies, 1st time calling above for GOT and second below for PLT in each loop, then i believe ifunc's won't die once i can properly call other functions dynamically; the same dependency chain might exist in the GOT too though when resolving GLOB_DAT and 64 references, must think about this
@@ -475,7 +472,7 @@ impl<'process> Linker<'process> {
         // > Much as the global offset table redirects position-independent address calculations
         // > to absolute locations, the procedure linkage table redirects position-independent
         // > function calls to absolute locations.
-        for rela in object.pltrelatab() {
+        for rela in object.pltrelatab {
             let typ = rela::r_type(rela.r_info);
             let sym = rela::r_sym(rela.r_info); // index into the sym table
             let symbol = &symtab[sym as usize];
@@ -494,9 +491,6 @@ impl<'process> Linker<'process> {
                 // fun @ (B + A)()
                 rela::R_X86_64_IRELATIVE => {
                     let addr = rela.r_addend + bias as i64;
-                    if object.name() == "libm.so.6" {
-                        unsafe { HACK = true; }
-                    }
                     println!("IRELATIVE: bias: {:#x} addend: {:#x} addr: {:#x}", bias, rela.r_addend, addr);
                     // TODO: just inline this call here, it's so simple, doesn't need a function
                     unsafe { *reloc = self.resolve_with_ifunc(addr as u64); }
@@ -506,16 +500,16 @@ impl<'process> Linker<'process> {
                 _ => ()
             }
         }
-        println!("<dryad> relocate plt: {} symbols for {}", count, object.name());
+        println!("<dryad> relocate plt: {} symbols for {}", count, object.name);
     }
     
     // TODO: this will not build because lifetime params are totally off the wall messed up.  thanks to steveklabnik for confirming error messages unusually terse
-    fn build_link_map (&mut self, executable: &Executable) {
+    fn build_link_map (&mut self, executable: &SharedObject) {
         self.link_map.reserve_exact(self.link_map_order.len());
         /*
         let ld = LinkData {
-            addr: executable.base, // check this
-            name: executable.name,
+            addr: executable.load_bias, // check this
+            name: executable.name.as_str(),
             dynamic: executable.dynamic,
             strtab: executable.strtab,
             symtab: executable.symtab,
@@ -534,6 +528,7 @@ impl<'process> Linker<'process> {
             self.link_map.push(ld);
         }
         */
+
     }
 
     /// Main staging point for linking the executable dryad received
@@ -542,7 +537,7 @@ impl<'process> Linker<'process> {
     /// 2. Then, creates the link map, and then relocates all the shared object dependencies and joins the result
     /// 3. Finally, relocates the executable, and then transfers control
     #[no_mangle]
-    pub fn link_executable(&mut self, image: &Executable) -> Result<(), String> {
+    pub fn link_executable(&mut self, image: SharedObject) -> Result<(), String> {
 
         /* Fun Fact: uncomment this for ridiculous disaster: runs fine when links itself, but not when it links an executable, because hell
         let v = vec![1, 2, 3, 4];
@@ -574,7 +569,7 @@ impl<'process> Linker<'process> {
 
         self.link_map_order.dedup();
         println!("LINK MAP ORDER: {:#?}", self.link_map_order);
-        self.build_link_map(image);
+        self.build_link_map(&image);
 //        println!("LINK MAP: {:#?}", link_map);
 
         // <join>
@@ -600,8 +595,8 @@ impl<'process> Linker<'process> {
         // TODO: determine ld-so's relocation order (_not_ equivalent to it's search order, which is breadth first from needed libs)
         // I think if it weren't for gnu_ifuncs, we could relocate in any order, even with LD_BIND_NOW, but because gnu_ifuncs essentially execute arbitrary code, including calling into the GOT, if the GOT isn't setup and relative relocations, for example, haven't been processed in the binary which has the reference, we're doomed.  Example is a libm ifunc (after matherr) for `__exp_finite` that calls `__get_cpu_features` which resides in libc.
 
-        for so in self.working_set.values() {
-            self.relocate_got(so);
+        for (i, so) in self.working_set.values().enumerate() {
+            self.relocate_got(i+1, so);
         }
 
         // I believe we can parallelize the relocation pass by:
@@ -615,7 +610,7 @@ impl<'process> Linker<'process> {
         // 3. relocate executable and transfer control
 
         println!("Relocating executable");
-        self.relocate_got(image);
+        self.relocate_got(0, &image);
 
         // we safely loaded and relocated everything, so we can now forget the working_set so it doesn't segfault when we try to access it back again after passing through assembly to `dryad_resolve_symbol`, which from the compiler's perspective means it needs to be dropped
         mem::forget(&self.working_set);
