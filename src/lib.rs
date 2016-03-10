@@ -45,42 +45,6 @@ extern {
     fn _start();
 }
 
-/*
-fn maintain_illusion (block: &kernel_block::KernelBlock) {
-    use auxv::*;
-    let mut i = 0;
-    unsafe {
-        loop {
-            let mut auxv = block.auxv.offset(i);
-            match (*auxv).a_type {
-                AT_NULL => return,
-                  AT_PHDR => (*auxv).a_val = 0,
-                AT_PHNUM => (*auxv).a_val = 0,
-                // AT_ENTRY => (*auxv).a_val = 0,
-                AT_EXECFN => (*auxv).a_val = 0,
-                _ => (),
-            }
-            i += 1;
-        }
-    }
-}
-*/
-
-fn dryad_main (dryad: &mut linker::Linker, block: &kernel_block::KernelBlock) -> Result<(), String> {
-    println!("Dryad:\n  {:#?}", &dryad);
-    println!("BEGIN EXE LINKING");
-//    linker::LINKER_ADDR = Some(dryad);
-    let name = utils::as_str(block.argv[0]);
-    let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
-    let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
-    let main_image = try!(binary::elf::image::SharedObject::from_executable(name, phdr_addr, phnum as usize));
-    println!("Main Image:\n  {:#?}", &main_image);
-
-    dryad.link_executable(main_image)
-    // TODO: according to the libc implementation, the binary needs to get a stack and argc that looks like it was executed directly --- but the auxv already has the phdr_addr set correctly, so i'm not sure what all that code is for...?
-    //maintain_illusion(&block);
-}
-
 #[no_mangle]
 pub extern fn _dryad_init (raw_args: *const u64) -> u64 {
 
@@ -108,14 +72,16 @@ pub extern fn _dryad_init (raw_args: *const u64) -> u64 {
 
     match linker::Linker::new(linker_base, &block) {
         Ok (mut dryad) => {
+            println!("Dryad:\n  {:#?}", &dryad);
 
-            if let Err(msg) = dryad_main(&mut dryad, &block) {
+            if let Err(msg) = dryad.link(&block) {
                 println!("{}", msg);
                 _exit(1);
                 0xd47ad
-
             } else {
-                // if we don't forget the entire dryad linker then internal heap-allocated strings get corrupted, like SharedObject.name
+                // verify minimum forget parameters, this comment could be obsolete: if we don't forget the entire dryad linker then internal heap-allocated strings get corrupted, like SharedObject.name
+                // "Blessed are the forgetful, for they get the better even of their blunders."
+                // "Without forgetting it is quite impossible to live at all."
                 mem::forget(dryad);
                 entry
             }

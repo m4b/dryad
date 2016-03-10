@@ -14,8 +14,6 @@ use std::path::Path;
 //use std::thread;
 //use std::sync::{Arc, Mutex};
 
-use link_map::LinkData;
-
 use binary::elf::header;
 use binary::elf::program_header;
 use binary::elf::dyn;
@@ -24,6 +22,7 @@ use binary::elf::rela;
 use binary::elf::loader;
 use binary::elf::image::SharedObject;
 
+use utils;
 use kernel_block;
 use auxv;
 use relocate;
@@ -162,10 +161,25 @@ pub struct Linker<'process> {
     config: Config<'process>,
     working_set: Box<HashMap<String, SharedObject<'process>>>,
     link_map_order: Vec<String>,
-    link_map: Vec<LinkData<'process>>,
+    link_map: Vec<SharedObject<'process>>,
+//    link_map: Vec<LinkData<'process>>,
     // TODO: add a set of SharedObject names which a dryad thread inserts into after stealing work to load a SharedObject;
     // this way when other threads check to see if they should load a dep, they can skip from adding it to the set because it's being worked on
     // TODO: lastly, must determine a termination condition to that indicates all threads have finished recursing and no more work is waiting, and hence can transition to the relocation stage
+}
+
+impl<'process> fmt::Debug for Linker<'process> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "base: {:x} load_bias: {:x} vdso: {:x} ehdr: {:#?} phdrs: {:#?} dynamic: {:#?} Config: {:#?}",
+               self.base,
+               self.load_bias,
+               self.vdso,
+               self.ehdr,
+               self.phdrs,
+               self.dynamic,
+               self.config
+               )
+    }
 }
 
 extern {
@@ -178,14 +192,14 @@ extern {
 pub extern fn dryad_resolve_symbol (link_map_ptr: *const u64, rela_idx: u64) -> u64 {
     unsafe {
         println!("<dryad_resolve_symbol> link_map_ptr: {:#?} rela_idx: {}", link_map_ptr, rela_idx);
-        let pair = Box::from_raw(link_map_ptr as *mut (usize, *mut Vec<LinkData>));
+        let pair = Box::from_raw(link_map_ptr as *mut (usize, *mut Vec<SharedObject>));
 
         let idx = pair.0;
 //        println!("<dryad_resolve_symbol> reconstructed  {:#?} with idx: {}", pair.1, idx);
         println!("<dryad_resolve_symbol> reconstructed {:#?} with idx: {}", pair.1, idx);
-        let link_map: &Vec<LinkData> = &*pair.1;
+        let link_map: &Vec<SharedObject> = &*pair.1;
         //        println!("<dryad_resolve_symbol> reconstructed  {:#?} with idx: {} for symbol {}", requesting_so.name, rela_idx, requested_symbol);
-        println!("read {:#?}", link_map);
+        println!("read {:#?}", link_map.len());
         let requesting_so = &link_map[idx];
         let requested_symbol = &requesting_so.strtab[rela_idx as usize];
         
@@ -206,6 +220,7 @@ pub extern fn dryad_resolve_symbol (link_map_ptr: *const u64, rela_idx: u64) -> 
 impl<'process> Linker<'process> {
     pub fn new<'kernel> (base: u64, block: &'kernel kernel_block::KernelBlock) -> Result<Linker<'kernel>, &'static str> {
         unsafe {
+
             let ehdr = header::unsafe_as_header(base as *const u64);
             let addr = (base + ehdr.e_phoff) as *const program_header::ProgramHeader;
             let phdrs = program_header::to_phdr_array(addr, ehdr.e_phnum as usize);
@@ -299,16 +314,14 @@ impl<'process> Linker<'process> {
     }
 
     // TODO: holy _god_ is this slow; no wonder they switched to a bloom filter.  fix this with proper symbol finding, etc.
-    // HACK for testing, performs shitty linear search * num so's (* number of total relocations in this binary group... ouch)
+    // HACK for testing, performs shitty linear search using the so's `find` method, which is compounded by * num so's (* number of total relocations in this binary group... ouch)
     // fn find_symbol(&self, name: &str) -> Option<&sym::Sym> {
     fn find_symbol(&self, name: &str) -> Option<u64> {
-        for so in self.working_set.values() {
+        for so in &self.link_map {
             //println!("<dryad> searching {} for {}", so.name, name);
-            for sym in so.symtab {
-                if &so.strtab[sym.st_name as usize] == name {
-//                    println!("<dryad> Symbol \"{:?}\" found in {}", name, so.name);
-                    return Some (sym.st_value + so.load_bias)
-                }
+            let addr = so.find(name);
+            if addr != None {
+                return addr
             }
         }
 
@@ -379,7 +392,6 @@ impl<'process> Linker<'process> {
             *second_entry = pair_ptr as u64;
             */
             println!("LINK MAP PTR: {:#?}", self.link_map.as_ptr());
-            // TODO: get the actual index of the so
             let pair = Box::new((idx, self.link_map.as_ptr()));
             *second_entry = Box::into_raw(pair) as u64;
             *third_entry = _dryad_resolve_symbol as u64;
@@ -498,41 +510,13 @@ impl<'process> Linker<'process> {
         println!("<dryad> relocate plt: {} symbols for {}", count, object.name);
     }
     
-    // TODO: this will not build because lifetime params are totally off the wall messed up.  thanks to steveklabnik for confirming error messages unusually terse
-    fn build_link_map (&mut self, executable: &SharedObject) {
-        self.link_map.reserve_exact(self.link_map_order.len());
-        /*
-        let ld = LinkData {
-            addr: executable.load_bias, // check this
-            name: executable.name.as_str(),
-            dynamic: executable.dynamic,
-            strtab: executable.strtab,
-            symtab: executable.symtab,
-        };
-        self.link_map.push(ld);
-
-        for link in &self.link_map_order {
-            let so = self.working_set.get(link).unwrap();
-            let ld = LinkData {
-                addr: so.load_bias,
-                name: so.name.as_str(),
-                dynamic: so.dynamic,
-                strtab: so.strtab,
-                symtab: so.symtab,
-            };
-            self.link_map.push(ld);
-        }
-        */
-
-    }
-
     /// Main staging point for linking the executable dryad received
     /// (Experimental): Responsible for parallel execution and thread joining
-    /// 1. First loads all the shared object dependencies and joins the result
+    /// 1. First builds the executable and then all the shared object dependencies and joins the result
     /// 2. Then, creates the link map, and then relocates all the shared object dependencies and joins the result
     /// 3. Finally, relocates the executable, and then transfers control
     #[no_mangle]
-    pub fn link_executable(&mut self, image: SharedObject) -> Result<(), String> {
+    pub fn link(&mut self, block: &kernel_block::KernelBlock) -> Result<(), String> {
 
         /* Fun Fact: uncomment this for ridiculous disaster: runs fine when links itself, but not when it links an executable, because hell
         let v = vec![1, 2, 3, 4];
@@ -552,6 +536,14 @@ impl<'process> Linker<'process> {
         }
         */
 
+        // build executable
+        println!("BEGIN EXE LINKING");
+        let name = utils::as_str(block.argv[0]);
+        let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
+        let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
+        let image = try!(SharedObject::from_executable(name, phdr_addr, phnum as usize));
+        println!("Main Image:\n  {:#?}", &image);
+
         // 1. load all
 
         // TODO: transfer ownership of libs (or allocate) to the linker, so it can be parallelized
@@ -564,8 +556,16 @@ impl<'process> Linker<'process> {
 
         self.link_map_order.dedup();
         println!("LINK MAP ORDER: {:#?}", self.link_map_order);
-        self.build_link_map(&image);
-//        println!("LINK MAP: {:#?}", link_map);
+
+        self.link_map.reserve_exact(self.link_map_order.len()+1);
+        self.link_map.push(image);
+        for soname in &self.link_map_order {
+            println!("remove: {:#?}", soname);
+            let so = self.working_set.remove(soname).unwrap();
+            self.link_map.push(so);
+        }
+        println!("working set is drained: {}", self.working_set.len());
+//        println!("LINK MAP: {:#?}", self.link_map);
 
         // <join>
         // 2. relocate all
@@ -590,41 +590,27 @@ impl<'process> Linker<'process> {
         // TODO: determine ld-so's relocation order (_not_ equivalent to it's search order, which is breadth first from needed libs)
         // I think if it weren't for gnu_ifuncs, we could relocate in any order, even with LD_BIND_NOW, but because gnu_ifuncs essentially execute arbitrary code, including calling into the GOT, if the GOT isn't setup and relative relocations, for example, haven't been processed in the binary which has the reference, we're doomed.  Example is a libm ifunc (after matherr) for `__exp_finite` that calls `__get_cpu_features` which resides in libc.
 
-        for (i, so) in self.working_set.values().enumerate() {
+        for (i, so) in self.link_map.iter().enumerate() {
             self.relocate_got(i+1, so);
         }
 
         // I believe we can parallelize the relocation pass by:
         // 1. skipping constructors, or blocking until the linkmaps deps are signalled as finished
         // 2. if skip, rerun through the link map again and call each constructor, since the GOT was prepared and now dynamic calls are ready
-        for so in self.working_set.values() {
+        for so in &self.link_map {
             self.relocate_plt(so, false);
         }
 
         // <join>
         // 3. relocate executable and transfer control
 
-        println!("Relocating executable");
-        self.relocate_got(0, &image);
+//        println!("Relocating executable");
+//        self.relocate_got(0, &self.link_map[0]);
 
         // we safely loaded and relocated everything, so we can now forget the working_set so it doesn't segfault when we try to access it back again after passing through assembly to `dryad_resolve_symbol`, which from the compiler's perspective means it needs to be dropped
-        mem::forget(&self.working_set);
         mem::forget(&self.link_map);
+//        mem::forget(self);
 
         Ok (())
-    }
-}
-
-impl<'process> fmt::Debug for Linker<'process> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "base: {:x} load_bias: {:x} vdso: {:x} ehdr: {:#?} phdrs: {:#?} dynamic: {:#?} Config: {:#?}",
-               self.base,
-               self.load_bias,
-               self.vdso,
-               self.ehdr,
-               self.phdrs,
-               self.dynamic,
-               self.config
-               )
     }
 }
