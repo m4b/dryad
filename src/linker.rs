@@ -11,10 +11,8 @@ use std::fs::File;
 use std::path::Path;
 
 //use scoped_thread::Pool;
-//use std::fs::OpenOptions;
-//use std::sync::{Arc, Mutex};
 //use std::thread;
-//use std::panic;
+//use std::sync::{Arc, Mutex};
 
 use link_map::LinkData;
 
@@ -32,9 +30,6 @@ use relocate;
 
 //thread_local!(static FOO: u32 = 0xdeadbeef);
 
-#[no_mangle]
-pub static mut HACK: bool = false;
-
 /// The internal config the dynamic linker generates from the environment variables it receives.
 struct Config<'a> {
     bind_now: bool,
@@ -42,7 +37,6 @@ struct Config<'a> {
     secure: bool,
     verbose: bool,
     trace_loaded_objects: bool,
-//    library_path: &'a [&'a str],
     library_path: Vec<&'a str>,
     preload: &'a[&'a str]
 }
@@ -128,7 +122,7 @@ fn relocate_linker(bias: u64, relas: &[rela::Rela]) {
         if rela::r_type(rela.r_info) == rela::R_X86_64_DTPMOD64 {
             let reloc = (rela.r_offset + bias) as *mut u64;
             unsafe {
-                *reloc = 0;
+                *reloc = 0; // lol seriously ?
             }
         }
         if rela::r_type(rela.r_info) == rela::R_X86_64_RELATIVE {
@@ -147,6 +141,7 @@ fn relocate_linker(bias: u64, relas: &[rela::Rela]) {
 extern {
     /// TLS init function which needs a pointer to aux vector indexed by AT_<TYPE> that musl likes
     fn __init_tls(aux: *const u64);
+    // added all this for testing  TLS is going to be horrible
     fn __init_tp(p: *const u64);
     fn __copy_tls(mem: *const u8);
     static builtin_tls: *const u64;
@@ -224,7 +219,7 @@ impl<'process> Linker<'process> {
                 let auxv = block.get_aux();
 //                auxv[auxv::AT_PHDR as usize] = addr as u64;
 //                auxv[auxv::AT_BASE as usize] = base as u64;
-                __init_tls(auxv.as_ptr()); // this might not be safe yet because vec allocates
+                __init_tls(auxv.as_ptr()); // this _should_ be safe since vec only allocates and shouldn't access tls. maybe.
 
                 /* need something like this or write custom tls initializer
 	        if (__init_tp(__copy_tls((void *)builtin_tls)) < 0) {
