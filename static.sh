@@ -2,12 +2,12 @@
 
 set -e
 
-PREFIX=musldist
+PREFIX=musldist #change me if you installed rust somewhere different
 LIB=$PREFIX/lib
 SONAME=dryad.so.1
 RUSTLIB=$PREFIX/lib/rustlib/x86_64-unknown-linux-musl/lib
-RUSTHASH=db5a760f
-#DEPS_STD=
+RUSTHASH=$(ls $RUSTLIB/ | grep libstd | grep -oe "-[[:alnum:]]*" | grep -oe "[[:alnum:]]*") # yup you can make fun of me it's cool
+echo -e "using rust hash $RUSTHASH"
 
 export LD_LIBRARY_PATH=$PREFIX/lib #appending :$LD_LIBRARY_PATH causes segfault since it grabs libc.so.6 sitting in dryad dir, which has some kind of binary incompat over latest version because why not
 

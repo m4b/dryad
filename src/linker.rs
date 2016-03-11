@@ -1,3 +1,6 @@
+// Questions from README:
+// 1. Is the `rela` _always_ in a `PT_LOAD` segment?
+// 2. Is the `strtab` _always_ after the `symtab` in terms of binary offset, and hence we can compute the size of the symtab by subtracting the two?
 // TODO: LOAD THE VDSO: linux-vdso.so.1
 // TODO: implement the gnu symbol lookup with bloom filter
 // TODO: use link_map
@@ -554,7 +557,7 @@ impl<'process> Linker<'process> {
             try!(self.load(lib));
         }
 
-        self.link_map_order.dedup();
+        self.link_map_order.dedup(); // arrrrggggh this doesn't arbitrarily reduce duplicates so test/snappy dies earlier
         println!("LINK MAP ORDER: {:#?}", self.link_map_order);
 
         self.link_map.reserve_exact(self.link_map_order.len()+1);
