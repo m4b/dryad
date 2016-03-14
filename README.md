@@ -48,7 +48,7 @@ Finally, the last step, running `test/test`, which is a binary generated via `ma
 
 `dryad` _should_ be capable of interpreting itself, which you can verify by invoking `./dryad.so.1`.
 
-Eventually I will get around to creating a makefile (or better yet, cargo) --- sorry about that!  Really, stage `c` from above is the problem in the cargo pipeline, and if someone could figure that out, I'd be massively grateful.  I think the only solution, do to the intimate needs of dryad, is to create a cargo subcommand :/
+Eventually I will get around to creating a makefile (or better yet, cargo) --- sorry about that!  Really, stage `3` from above is the problem in the cargo pipeline, and if someone could figure that out, I'd be massively grateful.  I think the only solution, do to the intimate needs of dryad, is to create a cargo subcommand :/
 
 # Contributing
 
@@ -61,14 +61,15 @@ If you don't know anything about dynamic linking on x86-64 GNU systems for ELF, 
 3. [ELF TLS spec](http://people.redhat.com/aoliva/writeups/TLS/RFC-TLSDESC-x86.txt)
 3. [google's bionic dynamic linker source code](http://github.com/android/platform_bionic/)
 4. [glibc dynamic linker source code](https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
-5. [sco dynamic linking document](http://www.sco.com/developers/gabi/latest/ch5.dynamic.html)
-6. [iecc dynamic linking article](http://www.iecc.com/linker/linker10.html)
-7. [ELF loading tutorial](http://www.gelato.unsw.edu.au/IA64wiki/LoadingELFFiles)
-8. [Info on the GOT[0] - GOT[2] values](http://users.eecs.northwestern.edu/~kch479/docs/notes/linking.html)
-8. `man ld-so` for dynamic linking basics
-9. `man dlopen` for runtime dynamic linking basics
-10. `man 3 getauxval` for information on the auxiliary vector passed by the kernel to programs
-11. I'll also hopefully add a couple articles on some of my _mis_adventures on my essentially [defunct blog](http://www.m4b.io)
+5. [musl dynlink.c code](http://git.musl-libc.org/cgit/musl/tree/ldso/dynlink.c)
+6. [sco dynamic linking document](http://www.sco.com/developers/gabi/latest/ch5.dynamic.html)
+7. [iecc dynamic linking article](http://www.iecc.com/linker/linker10.html)
+8. [ELF loading tutorial](http://www.gelato.unsw.edu.au/IA64wiki/LoadingELFFiles)
+9. [Info on the GOT[0] - GOT[2] values](http://users.eecs.northwestern.edu/~kch479/docs/notes/linking.html)
+10. `man ld-so` for dynamic linking basics
+11. `man dlopen` for runtime dynamic linking basics
+12. `man 3 getauxval` for information on the auxiliary vector passed by the kernel to programs
+13. I'll also hopefully add a couple articles on some of my _mis_adventures on my essentially [defunct blog](http://www.m4b.io)
 
 # TODOs
 
