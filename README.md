@@ -1,6 +1,6 @@
 # Welcome
 
-![dryad](https://en.wikipedia.org/wiki/Dryad#/media/File:Dryad11.jpg)
+![dryad](doc/dryad.jpg)
 
 `dryad` is the **first** and **only** _parallel_, 64-bit ELF dynamic linker for GNU/Linux, written from scratch in Rust, and is:
 
@@ -14,7 +14,7 @@ but ~~all~~ most of these things will disappear in time!
 
 # Build
 
-To get up and running actually requires some work right now, because `rustc` isn't capable of generating stand-alone, completely statically linked binaries, which is a hard and fast requirement of a dynamic linker.  See this [issue](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011) and this great chapter about [linking details](https://doc.rust-lang.org/book/advanced-linking.html).~~ experiencing some issues as elaborated [here](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011/55)
+To get up and running actually requires some work right now, because !!`rustc` isn't capable of generating stand-alone, completely statically linked binaries, which is a hard and fast requirement of a dynamic linker.  See this [issue](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011) and this great chapter about [linking details](https://doc.rust-lang.org/book/advanced-linking.html).~~ currently experiencing some issues as elaborated [here](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011/55)
 
 So, I've created a script, `make_static.sh`, basically lifted from the chapter on linking, to "auto-build" a `rustc` compiler for static executables using [musl libc](http://www.musl-libc.org/).  This will take approximately 30 minutes to an hour to download everything (depending on connection obviously) and then compile Rust from source.  Be patient, grab a coffee (or tea).  Or don't, and stare at the output like I do.
 
@@ -30,8 +30,8 @@ After that's settled, the following sequence should get you on your way:
 
 1. `git clone http://github.com/m4b/dryad`
 2. `cd dryad`
-3. ~~`./make_static.sh`~~
-4. ~~<wait 30+ minutes>~~
+3. `./make_static.sh`
+4. **wait 30+ minutes**
 5. `./make_tests.sh`
 5. `./static.sh`
 6. `test/test`
