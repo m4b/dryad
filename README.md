@@ -38,11 +38,11 @@ After that's settled, the following sequence should get you on your way:
 
 The last script, `./static.sh` does four things:
 
-a. compiles the x86-64 asm stubs which dryad needs (change the `gcc` call to `clang` here if you like)
+1. compiles the x86-64 asm stubs which dryad needs (change the `gcc` call to `clang` here if you like)
    `gcc -fPIC -c -o start.o src/arch/x86/asm.s`
-b. compiles dryad into an object file using the rust compiler you built 30 minutes ago: `musldist/bin/rustc --target=x86_64-unknown-linux-musl src/lib.rs -g --emit obj -o dryad.o`
-c. links the asm stubs with dryad and then the rust standard libs, and pthreads and libc and etc.
-d. copies the resulting binary, `dryad.so.1`, into `/tmp/dryad.so.1` because that's what `PT_INTERPRETER` is set to in the test binaries. In the future we'll obviously make this `/usr/lib/dryad.so.1`, or wherever the appropriate place for the dynamic linker is (GNU's is called `ld-linux-x86-64.so.2` btw).
+2. compiles dryad into an object file using the rust compiler you built 30 minutes ago: `musldist/bin/rustc --target=x86_64-unknown-linux-musl src/lib.rs -g --emit obj -o dryad.o`
+3. links the asm stubs with dryad and then the rust standard libs, and pthreads and libc and etc.
+4. copies the resulting binary, `dryad.so.1`, into `/tmp/dryad.so.1` because that's what `PT_INTERPRETER` is set to in the test binaries. In the future we'll obviously make this `/usr/lib/dryad.so.1`, or wherever the appropriate place for the dynamic linker is (GNU's is called `ld-linux-x86-64.so.2` btw).
 
 Finally, the last step, running `test/test`, which is a binary generated via `make_tests.sh`, will output a ton of information and then segfault your machine, or perhaps not run at all, or really do any number of things --- I really can't say, since I've only tested on a single machine so far.
 
