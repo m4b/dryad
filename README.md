@@ -46,7 +46,7 @@ d. copies the resulting binary, `dryad.so.1`, into `/tmp/dryad.so.1` because tha
 
 Finally, the last step, running `test/test`, which is a binary generated via `make_tests.sh`, will output a ton of information and then segfault your machine, or perhaps not run at all, or really do any number of things --- I really can't say, since I've only tested on a single machine so far.
 
-`dryad` _should_ be capable of interpreting itself, which you can verify by invoking `./drayd.so.1`.
+`dryad` _should_ be capable of interpreting itself, which you can verify by invoking `./dryad.so.1`.
 
 Eventually I will get around to creating a makefile (or better yet, cargo) --- sorry about that!  Really, stage `c` from above is the problem in the cargo pipeline, and if someone could figure that out, I'd be massively grateful.  I think the only solution, do to the intimate needs of dryad, is to create a cargo subcommand :/
 

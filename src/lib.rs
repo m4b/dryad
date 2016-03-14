@@ -16,9 +16,6 @@ mod auxv;
 mod kernel_block;
 mod utils;
 mod binary;
-mod relocate;
-mod link_map;
-//mod scoped_thread;
 pub mod linker;
 
 use std::mem;

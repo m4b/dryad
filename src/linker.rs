@@ -1,3 +1,4 @@
+#![allow(unused_assignments)] // remove this after validating rela for get_linker_relocations
 // Questions from README:
 // 1. Is the `rela` _always_ in a `PT_LOAD` segment?
 // 2. Is the `strtab` _always_ after the `symtab` in terms of binary offset, and hence we can compute the size of the symtab by subtracting the two?
@@ -8,6 +9,7 @@
 // start linking some symbols!
 use std::collections::HashMap;
 use std::boxed::Box;
+use std::slice;
 use std::fmt;
 use std::mem;
 use std::fs::File;
@@ -20,7 +22,6 @@ use std::path::Path;
 use binary::elf::header;
 use binary::elf::program_header;
 use binary::elf::dyn;
-//use binary::elf::sym;
 use binary::elf::rela;
 use binary::elf::loader;
 use binary::elf::image::SharedObject;
@@ -28,7 +29,6 @@ use binary::elf::image::SharedObject;
 use utils;
 use kernel_block;
 use auxv;
-use relocate;
 
 //thread_local!(static FOO: u32 = 0xdeadbeef);
 
@@ -114,6 +114,25 @@ pub extern fn _dryad_fini() {
     return
 }
 */
+
+unsafe fn get_linker_relocations(bias: u64, dynamic: &[dyn::Dyn]) -> &[rela::Rela] {
+    let mut rela = 0;
+    let mut relasz = 0;
+    let mut relaent = 0;
+    let mut relacount = 0;
+    for dyn in dynamic {
+        match dyn.d_tag {
+            dyn::DT_RELA => {rela = dyn.d_val + bias;},
+            dyn::DT_RELASZ => {relasz = dyn.d_val;},
+            dyn::DT_RELAENT => {relaent = dyn.d_val;},
+            dyn::DT_RELACOUNT => {relacount = dyn.d_val;},
+            _ => ()
+        }
+    }
+    // TODO: validate relaent, using relacount
+    let count = (relasz / relaent) as usize;
+    slice::from_raw_parts(rela as *const rela::Rela, count)
+}
 
 /// TODO: i think this is false; we may need to relocate R_X86_64_GLOB_DAT and R_X86_64_64
 /// DTPMOD64 is showing up in relocs if we make dryad -shared instead of -pie.  and this is because it leaves local executable TLS model because the damn hash map uses random TLS data.  `working_set` has been the bane of my life in this project
@@ -231,7 +250,8 @@ impl<'process> Linker<'process> {
             let vdso = block.getauxval(auxv::AT_SYSINFO_EHDR).unwrap();
 
             if let Some(dynamic) = dyn::get_dynamic_array(load_bias, &phdrs) {
-                let relocations = relocate::get_relocations(load_bias, &dynamic);
+
+                let relocations = get_linker_relocations(load_bias, &dynamic);
                 relocate_linker(load_bias, &relocations);
                 // dryad has successfully relocated itself; time to init tls
                 let auxv = block.get_aux();
