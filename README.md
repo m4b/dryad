@@ -14,9 +14,9 @@ but ~~all~~ most of these things will disappear in time!
 
 # Build
 
-~~To get up and running actually requires some work right now, because `rustc` isn't capable of generating stand-alone, completely statically linked binaries, which is a hard and fast requirement of a dynamic linker.  See this [issue](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011) and this great chapter about [linking details](https://doc.rust-lang.org/book/advanced-linking.html).~~
+To get up and running actually requires some work right now, because `rustc` isn't capable of generating stand-alone, completely statically linked binaries, which is a hard and fast requirement of a dynamic linker.  See this [issue](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011) and this great chapter about [linking details](https://doc.rust-lang.org/book/advanced-linking.html).~~ experiencing some issues as elaborated [here](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011/55)
 
-~~So, I've created a script, `make_static.sh`, basically lifted from the chapter on linking, to "auto-build" a `rustc` compiler for static executables using [musl libc](http://www.musl-libc.org/).  This will take approximately 30 minutes to an hour to download everything (depending on connection obviously) and then compile Rust from source.  Be patient, grab a coffee (or tea).  Or don't, and stare at the output like I do.~~
+So, I've created a script, `make_static.sh`, basically lifted from the chapter on linking, to "auto-build" a `rustc` compiler for static executables using [musl libc](http://www.musl-libc.org/).  This will take approximately 30 minutes to an hour to download everything (depending on connection obviously) and then compile Rust from source.  Be patient, grab a coffee (or tea).  Or don't, and stare at the output like I do.
 
 In order to build dryad you'll need your typical build tools on a linux system, which varies from distro to distro.  But essentially you'll need:
 
@@ -45,6 +45,8 @@ c. links the asm stubs with dryad and then the rust standard libs, and pthreads 
 d. copies the resulting binary, `dryad.so.1`, into `/tmp/dryad.so.1` because that's what `PT_INTERPRETER` is set to in the test binaries. In the future we'll obviously make this `/usr/lib/dryad.so.1`, or wherever the appropriate place for the dynamic linker is (GNU's is called `ld-linux-x86-64.so.2` btw).
 
 Finally, the last step, running `test/test`, which is a binary generated via `make_tests.sh`, will output a ton of information and then segfault your machine, or perhaps not run at all, or really do any number of things --- I really can't say, since I've only tested on a single machine so far.
+
+`dryad` _should_ be capable of interpreting itself, which you can verify by invoking `./drayd.so.1`.
 
 Eventually I will get around to creating a makefile (or better yet, cargo) --- sorry about that!  Really, stage `c` from above is the problem in the cargo pipeline, and if someone could figure that out, I'd be massively grateful.  I think the only solution, do to the intimate needs of dryad, is to create a cargo subcommand :/
 

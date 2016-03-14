@@ -212,7 +212,7 @@ pub extern fn dryad_resolve_symbol (link_map_ptr: *const u64, rela_idx: u64) -> 
                 return symbol
             }
         }
-        println!("<dryad_resolve_symbol> Uh-oh, symbol {} not found, about to return a 0xdeadbeef sandwich for you to munch on, goodbye!", requested_symbol);
+        println!("<dryad_resolve_symbol> Uh-oh, symbol {} not found, about to return a 0xdeadbeef sandwhich for you to munch on, goodbye!", requested_symbol);
         0xdeadbeef // lel
     }
 }

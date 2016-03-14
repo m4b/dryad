@@ -9,7 +9,7 @@
 #![allow(unused_variables)]
 
 /// Dryad --- the world's first non-functional, yet-to-be-implemented, might be impossible or more likely inefficient --- parallel, dynamic linker.
-/// Many, many thanks to Mutabah, durka42, aatch, tilpner, niconii, bluss, and so many others on the IRC channel for answering my stupid questions.
+/// Many, many thanks to Mutabah, durka42, aatch, tilpner, niconii, bluss, steveklabnik and so many others on the IRC channel for answering my stupid questions.
 /// TODO: add support for invoking ./dryad <binary> <args>
 
 mod auxv;
