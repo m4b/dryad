@@ -348,7 +348,7 @@ impl<'process> SharedObject<'process> {
 
     pub fn find (&self, symbol: &str) -> Option<u64> {
         for sym in self.symtab {
-            if sym::is_import(&sym) &&
+            if !sym::is_import(&sym) &&
                 &self.strtab[sym.st_name as usize] == symbol {
                 return Some (sym.st_value + self.load_bias)
             }

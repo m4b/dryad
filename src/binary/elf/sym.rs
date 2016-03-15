@@ -26,7 +26,7 @@ pub fn st_type(info: u8) -> u8 {
 #[inline(always)]
 pub fn is_import(sym: &Sym) -> bool {
     let binding = st_bind(sym.st_info);
-    binding != STB_GLOBAL && sym.st_value != 0
+    binding == STB_GLOBAL && sym.st_value == 0
 }
 
 // sym bindings

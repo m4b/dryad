@@ -222,9 +222,10 @@ pub extern fn dryad_resolve_symbol (link_map_ptr: *const usize, rela_idx: usize)
         let requested_symbol = &requesting_so.symtab[rela::r_sym(rela.r_info) as usize];
         let name = &requesting_so.strtab[requested_symbol.st_name as usize];
         println!("<dryad_resolve_symbol> reconstructed link_map of size {} with requesting binary {:#?} for symbol with rela idx {} for symbol {}", link_map.len(), requesting_so.name, rela_idx, name);
-        for so in link_map {
+        for (i, so) in link_map.iter().enumerate() {
+            println!("i: {}", i);
             if let Some (symbol) = so.find(name) {
-                println!("<dryad_resolve_symbol> binding \"{}\" from {} on behalf of {} to address 0x{:x}", name, so.name, requesting_so.name, symbol);
+                println!("<dryad_resolve_symbol> binding \"{}\" in {} to {} at address 0x{:x}", name, so.name, requesting_so.name, symbol);
                 return symbol as usize
             }
         }
