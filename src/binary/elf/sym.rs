@@ -14,13 +14,19 @@ pub struct Sym {
 pub const SIZEOF_SYM: usize = 4 + 1 + 1 + 2 + 8 + 8;
 
 #[inline]
-pub fn st_bind(val: u8) -> u8 {
-    val >> 4
+pub fn st_bind(info: u8) -> u8 {
+    info >> 4
 }
 
 #[inline]
-pub fn st_type(val: u8) -> u8 {
-    val & 0xf
+pub fn st_type(info: u8) -> u8 {
+    info & 0xf
+}
+
+#[inline(always)]
+pub fn is_import(sym: &Sym) -> bool {
+    let binding = st_bind(sym.st_info);
+    binding != STB_GLOBAL && sym.st_value != 0
 }
 
 // sym bindings

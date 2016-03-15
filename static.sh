@@ -2,7 +2,7 @@
 
 set -e
 
-PREFIX=musldist #can almost use new rust deploy system at /usr/local but getting relocation errors w.r.t. liblibc wrapper :/
+PREFIX=/usr/local #can almost use new rust deploy system at /usr/local but getting relocation errors w.r.t. liblibc wrapper :/
 LIB=$PREFIX/lib
 SONAME=dryad.so.1
 RUSTLIB=$PREFIX/lib/rustlib/x86_64-unknown-linux-musl/lib
@@ -30,7 +30,7 @@ $PREFIX/bin/rustc --target=x86_64-unknown-linux-musl src/lib.rs -g --emit obj -o
 
 echo -e "linking..."
 # using -shared results in DPTMOD64 reloc, and because tls not properly init'd for __tls_get_address (only for local exec) inside of dryad, everything breaks
-ld -pie --gc-sections -I/tmp/$SONAME -L$LIB -soname $SONAME -Bsymbolic -nostdlib -e _start -o $SONAME start.o dryad.o "$RUSTLIB/libstd-$RUSTHASH.rlib" "$RUSTLIB/libcore-$RUSTHASH.rlib" "$RUSTLIB/librand-$RUSTHASH.rlib" "$RUSTLIB/liballoc-$RUSTHASH.rlib" "$RUSTLIB/libcollections-$RUSTHASH.rlib" "$RUSTLIB/librustc_unicode-$RUSTHASH.rlib" "$RUSTLIB/liballoc_system-$RUSTHASH.rlib" "$RUSTLIB/libcompiler-rt.a" $LIB/libc.a
+ld -pie --gc-sections -I/tmp/$SONAME -L$LIB -soname $SONAME -Bsymbolic -nostdlib -e _start -o $SONAME start.o dryad.o "$RUSTLIB/libstd-$RUSTHASH.rlib" "$RUSTLIB/libcore-$RUSTHASH.rlib" "$RUSTLIB/librand-$RUSTHASH.rlib" "$RUSTLIB/liballoc-$RUSTHASH.rlib" "$RUSTLIB/libcollections-$RUSTHASH.rlib" "$RUSTLIB/librustc_unicode-$RUSTHASH.rlib" "$RUSTLIB/liballoc_system-$RUSTHASH.rlib" "$RUSTLIB/libcompiler-rt.a" musldist/lib/libc.a
 
 # use this when fixed: https://internals.rust-lang.org/t/static-binary-support-in-rust/2011/55
 #"$RUSTLIB/liblibc-$RUSTHASH.rlib"

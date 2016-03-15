@@ -320,7 +320,7 @@ impl<'process> SharedObject<'process> {
                 let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
                 let strtab = Strtab::new(link_info.strtab as *const u8, link_info.strsz);
                 let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
-                let pltreltab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
+                let pltrelatab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
 
                 let pltgot = link_info.pltgot as *const u64;
 
@@ -335,7 +335,7 @@ impl<'process> SharedObject<'process> {
                     symtab: symtab,
                     strtab: strtab,
                     relatab: relatab,
-                    pltrelatab: pltreltab,
+                    pltrelatab: pltrelatab,
                     pltgot: pltgot,
                 })
 
@@ -348,7 +348,8 @@ impl<'process> SharedObject<'process> {
 
     pub fn find (&self, symbol: &str) -> Option<u64> {
         for sym in self.symtab {
-            if &self.strtab[sym.st_name as usize] == symbol {
+            if sym::is_import(&sym) &&
+                &self.strtab[sym.st_name as usize] == symbol {
                 return Some (sym.st_value + self.load_bias)
             }
         }

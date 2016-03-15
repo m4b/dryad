@@ -134,7 +134,7 @@ pub fn type_to_str(typ: u64) -> &'static str {
 pub struct Rela {
     pub r_offset: u64, /* Address */
     pub r_info: u64,/* Relocation type and symbol index */
-    pub r_addend:i64,/* Addend */
+    pub r_addend: i64,/* Addend */
 }
 
 pub const SIZEOF_RELA: usize = 8 + 8 + 8;

@@ -47,11 +47,6 @@ pub extern fn _dryad_init (raw_args: *const u64) -> u64 {
 
     // the linker is currently tied to the lifetime of the kernel block... but really it's static
     let block = KernelBlock::new(raw_args);
-    unsafe {
-        // TODO: this is getting EFAULT badd address because it's trying to print string locals which haven't be relocated yet...
-        block.unsafe_print();
-    }
-
     let linker_base = block.getauxval(auxv::AT_BASE).unwrap();
     let entry  = block.getauxval(auxv::AT_ENTRY).unwrap();
 

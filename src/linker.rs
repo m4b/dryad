@@ -211,27 +211,24 @@ extern {
 }
 
 #[no_mangle]
-pub extern fn dryad_resolve_symbol (link_map_ptr: *const u64, rela_idx: u64) -> u64 {
+pub extern fn dryad_resolve_symbol (link_map_ptr: *const usize, rela_idx: usize) -> usize {
     unsafe {
         println!("<dryad_resolve_symbol> link_map_ptr: {:#?} rela_idx: {}", link_map_ptr, rela_idx);
-        let pair = Box::from_raw(link_map_ptr as *mut (usize, *mut Vec<SharedObject>));
-
-        let idx = pair.0;
-//        println!("<dryad_resolve_symbol> reconstructed  {:#?} with idx: {}", pair.1, idx);
-        println!("<dryad_resolve_symbol> reconstructed {:#?} with idx: {}", pair.1, idx);
-        let link_map: &Vec<SharedObject> = &*pair.1;
-        //        println!("<dryad_resolve_symbol> reconstructed  {:#?} with idx: {} for symbol {}", requesting_so.name, rela_idx, requested_symbol);
-        println!("read {:#?}", link_map.len());
+        let rdvz = Box::from_raw(link_map_ptr as *mut (usize, *mut SharedObject, usize));
+        let idx = rdvz.0;
+        let link_map: &[SharedObject] = slice::from_raw_parts(rdvz.1, rdvz.2);
         let requesting_so = &link_map[idx];
-        let requested_symbol = &requesting_so.strtab[rela_idx as usize];
-        
+        let rela = &requesting_so.pltrelatab[rela_idx];
+        let requested_symbol = &requesting_so.symtab[rela::r_sym(rela.r_info) as usize];
+        let name = &requesting_so.strtab[requested_symbol.st_name as usize];
+        println!("<dryad_resolve_symbol> reconstructed link_map of size {} with requesting binary {:#?} for symbol with rela idx {} for symbol {}", link_map.len(), requesting_so.name, rela_idx, name);
         for so in link_map {
-            println!("<dryad_resolve_symbol> searching {} for symbol {} on behalf of {}", so.name, requested_symbol, requesting_so.name);
-            if let Some (symbol) = so.find(requested_symbol) {
-                return symbol
+            if let Some (symbol) = so.find(name) {
+                println!("<dryad_resolve_symbol> binding \"{}\" from {} on behalf of {} to address 0x{:x}", name, so.name, requesting_so.name, symbol);
+                return symbol as usize
             }
         }
-        println!("<dryad_resolve_symbol> Uh-oh, symbol {} not found, about to return a 0xdeadbeef sandwhich for you to munch on, goodbye!", requested_symbol);
+        println!("<dryad_resolve_symbol> Uh-oh, symbol {} not found, about to return a 0xdeadbeef sandwhich for you to munch on, goodbye!", name);
         0xdeadbeef // lel
     }
 }
@@ -414,9 +411,10 @@ impl<'process> Linker<'process> {
             let pair_ptr: *mut (*const str, *const HashMap<String, SharedObject>) = Box::into_raw(pair);
             *second_entry = pair_ptr as u64;
             */
-            println!("LINK MAP PTR: {:#?}", self.link_map.as_ptr());
-            let pair = Box::new((idx, self.link_map.as_ptr()));
-            *second_entry = Box::into_raw(pair) as u64;
+            let len = self.link_map.len();
+            let rdvz = Box::new((idx, self.link_map.as_slice(), len));
+            println!("rdvz idx {} with len {}", idx, len);
+            *second_entry = Box::into_raw(rdvz) as u64;
             *third_entry = _dryad_resolve_symbol as u64;
             println!("<dryad> finished got setup for {} GOT[1] = {:#x} GOT[2] = {:#x}", name, *second_entry, *third_entry);
         }
@@ -587,9 +585,7 @@ impl<'process> Linker<'process> {
             let so = self.working_set.remove(soname).unwrap();
             self.link_map.push(so);
         }
-        println!("working set is drained: {}", self.working_set.len());
-//        println!("LINK MAP: {:#?}", self.link_map);
-
+        println!("working set is drained: {}", self.working_set.len() == 0);
         // <join>
         // 2. relocate all
         // TODO: after _all_ SharedObject have been loaded, it is safe to relocate if we stick to ELF symbol search rule of first search executable, then in each of DT_NEEDED in order, then deps of first DT_NEEDED, and if not found, then deps of second DT_NEEDED, etc., i.e., breadth-first search.  Why this is allowed to continue past the executable's _OWN_ dependency list is anyone's guess; a penchant for chaos perhaps?
@@ -611,17 +607,17 @@ impl<'process> Linker<'process> {
         // is reduced to [exe, libfoo, libbar, libbaz, libderp, libslerp, libmerp]
 
         // TODO: determine ld-so's relocation order (_not_ equivalent to it's search order, which is breadth first from needed libs)
-        // I think if it weren't for gnu_ifuncs, we could relocate in any order, even with LD_BIND_NOW, but because gnu_ifuncs essentially execute arbitrary code, including calling into the GOT, if the GOT isn't setup and relative relocations, for example, haven't been processed in the binary which has the reference, we're doomed.  Example is a libm ifunc (after matherr) for `__exp_finite` that calls `__get_cpu_features` which resides in libc.
+        // Because gnu_ifuncs essentially execute arbitrary code, including calling into the GOT, if the GOT isn't setup and relative relocations, for example, haven't been processed in the binary which has the reference, we're doomed.  Example is a libm ifunc (after matherr) for `__exp_finite` that calls `__get_cpu_features` which resides in libc.
 
         for (i, so) in self.link_map.iter().enumerate() {
-            self.relocate_got(i+1, so);
+            self.relocate_got(i, so);
         }
 
         // I believe we can parallelize the relocation pass by:
         // 1. skipping constructors, or blocking until the linkmaps deps are signalled as finished
         // 2. if skip, rerun through the link map again and call each constructor, since the GOT was prepared and now dynamic calls are ready
-        for so in &self.link_map {
-            self.relocate_plt(so, false);
+        for (i, so) in self.link_map.iter().enumerate() {
+            self.relocate_plt(so, i == 0);
         }
 
         // <join>
@@ -631,6 +627,7 @@ impl<'process> Linker<'process> {
 //        self.relocate_got(0, &self.link_map[0]);
 
         // we safely loaded and relocated everything, so we can now forget the working_set so it doesn't segfault when we try to access it back again after passing through assembly to `dryad_resolve_symbol`, which from the compiler's perspective means it needs to be dropped
+        println!("<dryad> link_map ptr: {:#?}, cap = len: {}", self.link_map.as_ptr(), self.link_map.capacity() == self.link_map.len());
         mem::forget(&self.link_map);
 //        mem::forget(self);
 
