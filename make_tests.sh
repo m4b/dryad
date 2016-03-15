@@ -20,6 +20,10 @@ echo -e "Building complicated binary $TESTDIR/snappy linked with libm and snappy
 gcc -lm -lsnappy -Wl,-I,$DRYAD $TESTDIR/snappy.c -o $TESTDIR/snappy
 gcc -lm -lsnappy $TESTDIR/snappy.c -o $TESTDIR/ldsnappy
 
+echo -e "Building a binary $TESTDIR/float with libm that performs no printing"
+gcc -lm -Wl,-I,$DRYAD $TESTDIR/float.c -o $TESTDIR/float
+gcc -lm $TESTDIR/float.c -o $TESTDIR/ldfloat
+
 # uncomment this and use $LIB with a `libc.so` to create a musl binary to test with
 #echo -e "Building musl linked binary $TESTDIR/musl"
 #gcc -nodefaultlibs -nostdlib -Wl,-I$DRYAD -L$LIB -lc $LIB/Scrt1.o $TESTDIR/musl.c -o $TESTDIR/musl
