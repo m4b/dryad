@@ -226,6 +226,7 @@ pub extern fn dryad_resolve_symbol (link_map_ptr: *const usize, rela_idx: usize)
             println!("i: {}", i);
             if let Some (symbol) = so.find(name) {
                 println!("<dryad_resolve_symbol> binding \"{}\" in {} to {} at address 0x{:x}", name, so.name, requesting_so.name, symbol);
+                mem::forget(rdvz); // otherwise it gets dropped and is corrupted
                 return symbol as usize
             }
         }
