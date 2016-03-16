@@ -16,9 +16,9 @@ but ~~all~~ most of these things will disappear in time!
 
 # Build
 
-To get up and running actually requires a _little_ bit of work right now, because ~~`rustc` isn't capable of generating stand-alone, completely statically linked binaries, which is a hard and fast requirement of a dynamic linker.  See this [issue](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011) and this great chapter about [linking details](https://doc.rust-lang.org/book/advanced-linking.html).~~ experiencing some issues as elaborated [here](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011/55)
+To get up and running actually requires a _little_ bit of work right now, until the issue [here](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011/55) is resolved (hopefully _tomorrow_).
 
-So, I've created a script, `make_static.sh`, basically lifted from the chapter on linking, to "auto-build" a `rustc` compiler for static executables using [musl libc](http://www.musl-libc.org/).  ~~This will take approximately 30 minutes to an hour to download everything (depending on connection obviously) and then compile Rust from source.  Be patient, grab a coffee (or tea).  Or don't, and stare at the output like I do.~~
+So, I've created a script, `make_static.sh` to download the the `musl` source and the `rustc` nightly which now supports static executables using [musl libc](http://www.musl-libc.org/).
 
 In order to build dryad you'll need your typical build tools on a linux system, which varies from distro to distro.  But essentially you'll need:
 
@@ -81,6 +81,7 @@ Here are some major todos off the top of my head
 2. **MAJOR**: `dlfcn.h` implementation and shared object bindings for runtime dynamic loading support
 3. **MAJOR**: properly init dynamic linker's TLS.  This terrifies me.
 4. **MAJOR**: someone figure out how to get cargo working + tests + deps + linking, because that would be so, so amazing
+5. add the `rtld_dl_activity` gdb/debugger calls for notifying gdb, et. al when shared libraries are loaded, etc.  This will make debugging lazy plt calls _significantly_ easier.
 5. implement the GNU bloom filter for dem speeds
 6. better documentation
 7. fix any number of the todos littered across the code

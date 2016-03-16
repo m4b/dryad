@@ -1,6 +1,6 @@
 target
 *~
 test
-musldist
+musl*
 *.o
 *so*
