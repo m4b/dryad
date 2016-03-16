@@ -1,5 +1,7 @@
 # Welcome
 
+[![Build Status](https://travis-ci.org/m4b/dryad.svg?branch=master)](https://travis-ci.org/m4b/dryad)
+
 ![dryad](doc/dryad.jpg)
 
 `dryad` is the **first** and **only** _parallel_, 64-bit ELF dynamic linker for GNU/Linux, written from scratch in Rust, and is:

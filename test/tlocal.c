@@ -5,6 +5,6 @@ __thread int my_thread_local = 0xdeadbeef;
 
 int main () {
 
-  printf("my_thread_local: %d @ %x\n", my_thread_local, &my_thread_local);
+  printf("my_thread_local: %d @ %p\n", my_thread_local, &my_thread_local);
 
 }

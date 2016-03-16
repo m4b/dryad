@@ -52,18 +52,18 @@ _dryad_resolve_symbol:
 	vmovdqa %ymm5,0xa0(%rsp)
 	vmovdqa %ymm6,0xc0(%rsp)
 	vmovdqa %ymm7,0xe0(%rsp)
-	bndmov %bnd0,0x100(%rsp)
-	bndmov %bnd1,0x110(%rsp)
-	bndmov %bnd2,0x120(%rsp)
-	bndmov %bnd3,0x130(%rsp)
+//	bndmov %bnd0,0x100(%rsp)
+//	bndmov %bnd1,0x110(%rsp)
+//	bndmov %bnd2,0x120(%rsp)
+//	bndmov %bnd3,0x130(%rsp)
 	mov    0x10(%rbx),%rsi
 	mov    0x8(%rbx),%rdi
 	callq  dryad_resolve_symbol
 	mov    %rax,%r11
-	bndmov 0x130(%rsp),%bnd3
-	bndmov 0x120(%rsp),%bnd2
-	bndmov 0x110(%rsp),%bnd1
-	bndmov 0x100(%rsp),%bnd0
+//	bndmov 0x130(%rsp),%bnd3
+//	bndmov 0x120(%rsp),%bnd2
+//	bndmov 0x110(%rsp),%bnd1
+//	bndmov 0x100(%rsp),%bnd0
 	mov    0x170(%rsp),%r9
 	mov    0x168(%rsp),%r8
 	mov    0x160(%rsp),%rdi
@@ -98,18 +98,3 @@ _print:
         syscall
         pop %rbp
         retq
-
-	.text
-        .globl _myfork
-        .type _myfork, @function
-_myfork:
-        push %rbp
-        mov %rsp, %rbp
-        mov %rsi, %rdx
-        mov %rdi, %rsi
-        mov $2, %rax
-        syscall
-        pop %rbp
-        retq
-
-
