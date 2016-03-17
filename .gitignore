@@ -1,6 +1,6 @@
 target
 *~
 test
-musl*
+rust
 *.o
 *so*

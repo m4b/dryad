@@ -2,5 +2,5 @@ language: rust
 before_install:
   - sudo apt-get -qq update
   - sudo apt-get install -y libsnappy-dev
-install: ./make_static.sh
-script: ./static.sh
+install: ./setup.sh
+script: ./make.sh

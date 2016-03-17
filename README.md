@@ -2,11 +2,11 @@
 
 [![Build Status](https://travis-ci.org/m4b/dryad.svg?branch=master)](https://travis-ci.org/m4b/dryad) [![Floobits Status](https://floobits.com/m4b/dryad.svg)](https://floobits.com/m4b/dryad/redirect)
 
-
 ![dryad](doc/dryad.jpg)
 
 `dryad` is the **first** and **only** _parallel_, 64-bit ELF dynamic linker for GNU/Linux, written from scratch in Rust, and is:
 
+0. not parallel
 1. not ready for production
 2. a prototype
 3. doesn't really work
@@ -17,9 +17,7 @@ but ~~all~~ most of these things will disappear in time!
 
 # Build
 
-To get up and running actually requires a _little_ bit of work right now, until the issue [here](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011/55) is resolved (hopefully _tomorrow_).
-
-So, I've created a script, `make_static.sh` to download the the `musl` source and the `rustc` nightly which now supports static executables using [musl libc](http://www.musl-libc.org/).
+Now that [PIC musl has landed](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011/55), setting up a build environment (on Linux) is easy.  
 
 In order to build dryad you'll need your typical build tools on a linux system, which varies from distro to distro.  But essentially you'll need:
 
@@ -29,29 +27,73 @@ In order to build dryad you'll need your typical build tools on a linux system, 
 - an internet connection
 - an x86-64 linux box
 
-After that's settled, the following sequence should get you on your way:
+Once that's settled, you have two options, both fairly easy.
 
-1. `git clone http://github.com/m4b/dryad`
-2. `cd dryad`
-3. `./make_static.sh`
-4. ~~**wait 30+ minutes**~~
-5. `./make_tests.sh`
-5. `./static.sh`
-6. `test/test`
+## Setup - Easy
 
-The last script, `./static.sh` does four things:
+Just run `./setup.sh`, which will download and install the latest rust nightly into the `rust` directory.
 
-1. compiles the x86-64 asm stubs which dryad needs (change the `gcc` call to `clang` here if you like)
-   `gcc -fPIC -c -o start.o src/arch/x86/asm.s`
-2. compiles dryad into an object file using the rust compiler you built 30 minutes ago: `musldist/bin/rustc --target=x86_64-unknown-linux-musl src/lib.rs -g --emit obj -o dryad.o`
-3. links the asm stubs with dryad and then the rust standard libs, and pthreads and libc and etc.
+You can then proceed as normal:
+
+1. `./gen_tests.sh` - builds the test binaries (do this once)
+2. `./make.sh` - compiles `dryad.so.1` and copies it to `/tmp`
+3. `test/test` - runs the test binary `test`, whose `PT_INTERPRETER` is `/tmp/dryad.so.1`
+
+## Setup - Use Nightly Rust, slightly less easier
+
+If the latest `rustc` is not installed, just download and use the latest version of rustup script to install the latest nightly with the musl target enabled, i.e.:
+
+```
+curl -sSf https://static.rust-lang.org/rustup.sh > rustup.sh
+chmod +x rustup.sh
+sudo ./rustup.sh --channel=nightly --with-target=x86_64-unknown-linux-musl
+```
+
+And then edit `make.sh` script to use `/usr/local` as the `$PREFIX` instead of `rust`.
+
+You can then compile and run as normal.
+
+## Why `make.sh` (and not `cargo`)
+
+The last script, `make.sh`, does four things:
+
+1. compiles the x86-64 asm stubs which dryad needs (change the `gcc` call to `clang` here if you like) `gcc -fPIC -c -o start.o src/arch/x86/asm.s`
+2. compiles dryad into an object file: `rustc --target=x86_64-unknown-linux-musl src/lib.rs -g --emit obj -o dryad.o`
+3. links the asm stubs with dryad and then the rust standard libs, and pthreads and libc and etc., and provides the very important linker flags such as `-pie`, `-Bsymbolic`, `-I/tmp/dryad.so.1`, `-soname dryad.so.1`, etc.
 4. copies the resulting binary, `dryad.so.1`, into `/tmp/dryad.so.1` because that's what `PT_INTERPRETER` is set to in the test binaries. In the future we'll obviously make this `/usr/lib/dryad.so.1`, or wherever the appropriate place for the dynamic linker is (GNU's is called `ld-linux-x86-64.so.2` btw).
 
-Finally, the last step, running `test/test`, which is a binary generated via `make_tests.sh`, will output a ton of information and then segfault your machine, or perhaps not run at all, or really do any number of things --- I really can't say, since I've only tested on a single machine so far.
+Eventually I will get around to creating a makefile (or better yet, cargo) --- sorry about that!  Really, stage `1` and `3` from above is the problem in the cargo pipeline, and if someone could figure that out, I'd be massively grateful.  I think the only solution, due to the intimate needs of dryad, is to create a cargo subcommand :/
 
-`dryad` _should_ be capable of interpreting itself, which you can verify by invoking `./dryad.so.1`.
+## Running
 
-Eventually I will get around to creating a makefile (or better yet, cargo) --- sorry about that!  Really, stage `3` from above is the problem in the cargo pipeline, and if someone could figure that out, I'd be massively grateful.  I think the only solution, do to the intimate needs of dryad, is to create a cargo subcommand :/
+The last step, running `test/test` (or any of the other test binaries in `test`), will output a ton of information and then segfault your machine, or perhaps not run at all, or really do any number of things --- I really can't say, since I've only tested on a single machine so far.
+
+**NOTE**: if you're on Ubuntu or another linux distro which doesn't place `libc` in `/usr/lib`, you'll need to pass `LD_LIBRARY_PATH=/path/to/libc` to your `test/test`, i.e.: `LD_LIBRARY_PATH=/path/to/libc test/test`.  Furthermore, if `libc` doesn't have symbolic links for the `soname` pointing to the actual binary, or the actual binary _is_ installed as the `soname`, then it also won't work.  We need `ld.so.cache` reader and parser for this - feel free to work on it!
+
+However, `dryad` is _almost_ capable of interpreting a (simple) binary (like `test/test`) which uses `libc.so.6`.
+
+Specifically, this means is that `dryad` at a high level does the following:
+
+1. relocates itself
+2. loads and `mmap`'s all binaries in the flattened dependency list
+3. relocates every loaded binary (technically, relocates a subset of the most common relocation symbols)
+4. sets up each binary's GOT with its runtime symbol resolution function (`_dryad_resolve_symbol`), and its "rendezvous" data structure
+5. resolves GNU ifuncs, and if `LD_BIND_NOW` is set, prebinds all function symbols.
+5. passes control to the executable
+6. (optionally, if `LD_BIND_NOW` is not set) lazily binds function calls
+7. segfaults
+
+There are _several_ major, and _many_ minor tasks that need to be finished to be even remotely "complete".  The first and most major one is properly setting up TLS.  Currently, it hacks it about by just calling the musl symbol `__init_tls` so we don't segfault on `fs:0` accesses and their ilk.
+
+But it really needs to be properly setup, as it's a delicate procedure.
+
+This is easily the least documented part of the entire dynamic linking process I have come across, so work is slow going.  Also there are some questions about how this will work exactly, which I'll detail at some other time, or in a blog post.
+
+Lastly, `dryad` _should_ be capable of interpreting itself, which you can verify by invoking `./dryad.so.1` (yes, dryad is it's own program interpreter).
+
+# Project Goals
+
+I will be updating this section shortly, please bear with me.
 
 # Contributing
 
