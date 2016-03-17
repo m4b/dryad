@@ -64,7 +64,7 @@ The last script, `make.sh`, does four things:
 
 Eventually I will get around to creating a makefile (or better yet, cargo) --- sorry about that!  Really, stage `1` and `3` from above is the problem in the cargo pipeline, and if someone could figure that out, I'd be massively grateful.  I think the only solution, due to the intimate needs of dryad, is to create a cargo subcommand :/
 
-## Running
+# Running
 
 The last step, running `test/test` (or any of the other test binaries in `test`), will output a ton of information and then segfault your machine, or perhaps not run at all, or really do any number of things --- I really can't say, since I've only tested on a single machine so far.
 

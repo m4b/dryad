@@ -5,5 +5,4 @@ pub mod rela;
 pub mod sym;
 pub mod loader;
 pub mod image;
-pub mod link_info;
 pub mod strtab;
