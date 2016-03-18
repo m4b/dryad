@@ -287,52 +287,6 @@ impl<'process> Linker<'process> {
         }
     }
 
-    /// TODO: rename to something like `load_all` to signify on return everything has loaded?
-    /// So: load many -> join -> relocate many -> join -> relocate executable and transfer control
-    /// 1. Open fd to shared object ✓ - TODO: parse and use /etc/ldconfig.cache
-    /// 2. get program headers ✓
-    /// 3. mmap PT_LOAD phdrs ✓
-    /// 4. compute load bias and base ✓
-    /// 5. get _DYNAMIC real address from the mmap'd segments ✓
-    /// 6a. create SharedObject from above ✓
-    /// 6b. relocate the SharedObject, including GLOB_DAT ✓ TODO: TLS shite
-    /// 6c. resolve function and PLT; for now, just act like LD_PRELOAD is set
-    /// 7. add `soname` => `SharedObject` entry in `linker.loaded` TODO: use better structure, resolve dependency chain
-    fn load(&mut self, soname: &str) -> Result<(), String> {
-        // TODO: properly open the file using soname -> path with something like `resolve_soname`
-        let paths = self.config.library_path.to_owned(); // TODO: so we compile, fix unnecessary alloc
-
-        // soname ∉ linker.loaded
-        if !self.working_set.contains_key(soname) {
-            let mut found = false;
-            for path in paths {
-                match File::open(Path::new(&path).join(soname)) {
-                    Ok (mut fd) => {
-                        found = true;
-                        println!("Opened: {:?}", fd);
-                        let shared_object = try!(loader::load(soname, &mut fd));
-                        let libs = &shared_object.libs.to_owned(); // TODO: fix this unnecessary allocation, but we _must_ insert before iterating
-                        self.working_set.insert(soname.to_string(), shared_object);
-
-                        // breadth first addition
-                        self.link_map_order.extend(libs.iter().map(|s| s.to_string()));
-                        
-                        for lib in libs {
-                            try!(self.load(lib));
-                        }
-                        break
-                    },
-                    _ => (),
-                }
-            }
-            if !found {
-                return Err(format!("<dryad> could not find {} in {:?}", &soname, self.config.library_path))
-            }
-        }
-
-        Ok (())
-    }
-
     // TODO: holy _god_ is this slow; no wonder they switched to a bloom filter.  fix this with proper symbol finding, etc.
     // HACK for testing, performs shitty linear search using the so's `find` method, which is compounded by * num so's (* number of total relocations in this binary group... ouch)
     // fn find_symbol(&self, name: &str) -> Option<&sym::Sym> {
@@ -521,6 +475,52 @@ impl<'process> Linker<'process> {
             }
         }
         println!("<dryad> relocate plt: {} symbols for {}", count, object.name);
+    }
+
+    /// TODO: rename to something like `load_all` to signify on return everything has loaded?
+    /// So: load many -> join -> relocate many -> join -> relocate executable and transfer control
+    /// 1. Open fd to shared object ✓ - TODO: parse and use /etc/ldconfig.cache
+    /// 2. get program headers ✓
+    /// 3. mmap PT_LOAD phdrs ✓
+    /// 4. compute load bias and base ✓
+    /// 5. get _DYNAMIC real address from the mmap'd segments ✓
+    /// 6a. create SharedObject from above ✓
+    /// 6b. relocate the SharedObject, including GLOB_DAT ✓ TODO: TLS shite
+    /// 6c. resolve function and PLT; for now, just act like LD_PRELOAD is set
+    /// 7. add `soname` => `SharedObject` entry in `linker.loaded` TODO: use better structure, resolve dependency chain
+    fn load(&mut self, soname: &str) -> Result<(), String> {
+        // TODO: properly open the file using soname -> path with something like `resolve_soname`
+        let paths = self.config.library_path.to_owned(); // TODO: so we compile, fix unnecessary alloc
+
+        // soname ∉ linker.loaded
+        if !self.working_set.contains_key(soname) {
+            let mut found = false;
+            for path in paths {
+                match File::open(Path::new(&path).join(soname)) {
+                    Ok (mut fd) => {
+                        found = true;
+                        println!("Opened: {:?}", fd);
+                        let shared_object = try!(loader::load(soname, &mut fd));
+                        let libs = &shared_object.libs.to_owned(); // TODO: fix this unnecessary allocation, but we _must_ insert before iterating
+                        self.working_set.insert(soname.to_string(), shared_object);
+
+                        // breadth first addition
+                        self.link_map_order.extend(libs.iter().map(|s| s.to_string()));
+
+                        for lib in libs {
+                            try!(self.load(lib));
+                        }
+                        break
+                    },
+                    _ => (),
+                }
+            }
+            if !found {
+                return Err(format!("<dryad> could not find {} in {:?}", &soname, self.config.library_path))
+            }
+        }
+
+        Ok (())
     }
     
     /// Main staging point for linking the executable dryad received
