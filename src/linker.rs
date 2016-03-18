@@ -205,7 +205,7 @@ extern {
     fn _dryad_resolve_symbol();
 }
 
-/// The data structure which allows runtime lazy binding.  A pointer to this structure is placed in a binaries GOT[1],
+/// The data structure which allows runtime lazy binding.  A pointer to this structure is placed in a binaries GOT[1] in `prepare_got`,
 /// and reconstructed in `dryad_resolve_symbol`
 #[repr(C)]
 pub struct Rendezvous<'a> {
@@ -217,7 +217,7 @@ pub struct Rendezvous<'a> {
 pub extern fn dryad_resolve_symbol (rndzv_ptr: *const Rendezvous, rela_idx: usize) -> usize {
     unsafe {
         println!("<dryad_resolve_symbol> link_map_ptr: {:#?} rela_idx: {}", rndzv_ptr, rela_idx);
-        let rndzv = &*(rndzv_ptr); // dereference the data structure
+        let rndzv = &*rndzv_ptr; // dereference the data structure
         let link_map = rndzv.link_map;
         let requesting_so = &link_map[rndzv.idx]; // get who called us using the index in the data structure
         let rela = &requesting_so.pltrelatab[rela_idx]; // now get the relocation using the rela_idx the binary pushed onto the stack
@@ -300,8 +300,6 @@ impl<'process> Linker<'process> {
     /// 7. add `soname` => `SharedObject` entry in `linker.loaded` TODO: use better structure, resolve dependency chain
     fn load(&mut self, soname: &str) -> Result<(), String> {
         // TODO: properly open the file using soname -> path with something like `resolve_soname`
-//        match OpenOptions::new().read(true).write(true).open(Path::new("/tmp/lib/").join(soname)) {
-
         let paths = self.config.library_path.to_owned(); // TODO: so we compile, fix unnecessary alloc
 
         // soname ∉ linker.loaded
@@ -418,12 +416,12 @@ impl<'process> Linker<'process> {
     }
 
     #[no_mangle]
-    fn resolve_with_ifunc (&self, addr: u64) -> u64 {
+    fn resolve_with_ifunc (&self, addr: usize) -> usize {
         unsafe {
-            let ifunc = mem::transmute::<u64, (fn() -> *const u64)>(addr);
+            let ifunc = mem::transmute::<usize, (fn() -> usize)>(addr);
             let res = ifunc();
-            println!("ifunc says: {:?}", res);
-            res as u64
+            println!("<dryad> ifunc says: 0x{:x}", res);
+            res
         }
     }
 
@@ -482,16 +480,13 @@ impl<'process> Linker<'process> {
         self.prepare_got(idx, object.pltgot, &object.name);
     }
 
-    fn relocate_plt (&self, object: &SharedObject, is_executable: bool) {
+    /// TODO: add check for if SO has the DT_BIND_NOW, and also other flags...
+    fn relocate_plt (&self, object: &SharedObject) {
 
         let symtab = &object.symtab;
         let strtab = &object.strtab;
         let bias = object.load_bias;
         let mut count = 0;
-
-        // TODO: if we split code starting here into two functions, and loop twice over the dependencies, 1st time calling above for GOT and second below for PLT in each loop, then i believe ifunc's won't die once i can properly call other functions dynamically; the same dependency chain might exist in the GOT too though when resolving GLOB_DAT and 64 references, must think about this
-        // TODO: or the SO has the DT_BIND_NOW, and also some shit in the flags
-        if is_executable || !self.config.bind_now { return }
 
         // x86-64 ABI, pg. 78:
         // > Much as the global offset table redirects position-independent address calculations
@@ -504,7 +499,7 @@ impl<'process> Linker<'process> {
             let name = &strtab[symbol.st_name as usize];
             let reloc = (rela.r_offset + bias) as *mut u64;
             match typ {
-                rela::R_X86_64_JUMP_SLOT => {
+                rela::R_X86_64_JUMP_SLOT if self.config.bind_now => {
                     if let Some(symbol_address) = self.find_symbol(name) {
 //                        println!("resolving {} to {:#x}", name, symbol_address);
                         unsafe { *reloc = symbol_address; }
@@ -516,9 +511,9 @@ impl<'process> Linker<'process> {
                 // fun @ (B + A)()
                 rela::R_X86_64_IRELATIVE => {
                     let addr = rela.r_addend + bias as i64;
-                    println!("IRELATIVE: bias: {:#x} addend: {:#x} addr: {:#x}", bias, rela.r_addend, addr);
+                    //println!("<dryad> irelative: bias: {:#x} addend: {:#x} addr: {:#x}", bias, rela.r_addend, addr);
                     // TODO: just inline this call here, it's so simple, doesn't need a function
-                    unsafe { *reloc = self.resolve_with_ifunc(addr as u64); }
+                    unsafe { *reloc = self.resolve_with_ifunc(addr as usize) as u64; }
                     count += 1;
                 },
                 // TODO: add error checking
@@ -536,10 +531,12 @@ impl<'process> Linker<'process> {
     #[no_mangle]
     pub fn link(&mut self, block: &kernel_block::KernelBlock) -> Result<(), String> {
 
-        /* Fun Fact: uncomment this for ridiculous disaster: runs fine when links itself, but not when it links an executable, because hell
+
+        // Fun Fact: uncomment this for ridiculous disaster: runs fine when links itself, but not when it links an executable, because hell
+        /*
         let v = vec![1, 2, 3, 4];
         let mut guards = vec![];
-        for k in 0..1 {
+        for k in v {
 
             let t = thread::spawn(move || {
                 println!("{} init", k);
@@ -614,7 +611,7 @@ impl<'process> Linker<'process> {
         // 1. skipping constructors, or blocking until the linkmaps deps are signalled as finished
         // 2. if skip, rerun through the link map again and call each constructor, since the GOT was prepared and now dynamic calls are ready
         for (i, so) in self.link_map.iter().enumerate() {
-            self.relocate_plt(so, i == 0);
+            self.relocate_plt(so);
         }
 
         // <join>
