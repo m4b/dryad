@@ -14,8 +14,8 @@ _start:
 	mov %rsp, %rdi
 //	mov %rsp, %rbp ; we shouldn't need to save rbp
 	andq $~15, %rsp
-        callq _dryad_init
-	/*
+        callq dryad_init
+	/* // need to add dryad's fini call into rdx... because that's where crt1.o's _start expects it to be
 	mov %rax, %rcx
 	callq _dryad_fini
 	movq %rax, %rdx
