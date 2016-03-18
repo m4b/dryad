@@ -415,16 +415,6 @@ impl<'process> Linker<'process> {
 
     }
 
-    #[no_mangle]
-    fn resolve_with_ifunc (&self, addr: usize) -> usize {
-        unsafe {
-            let ifunc = mem::transmute::<usize, (fn() -> usize)>(addr);
-            let res = ifunc();
-            println!("<dryad> ifunc says: 0x{:x}", res);
-            res
-        }
-    }
-
     // TODO: rela::R_X86_64_GLOB_DAT => this is a symbol resolution and requires full link map data, and _cannot_ be done before everything is relocated
     fn relocate_got (&self, idx: usize, object: &SharedObject) {
         let symtab = &object.symtab;
@@ -478,6 +468,16 @@ impl<'process> Linker<'process> {
         println!("<dryad> relocated {} symbols in {}", count, &object.name);
 
         self.prepare_got(idx, object.pltgot, &object.name);
+    }
+
+    #[no_mangle]
+    fn resolve_with_ifunc (&self, addr: usize) -> usize {
+        unsafe {
+            let ifunc = mem::transmute::<usize, (fn() -> usize)>(addr);
+            let res = ifunc();
+            println!("<dryad> ifunc says: 0x{:x}", res);
+            res
+        }
     }
 
     /// TODO: add check for if SO has the DT_BIND_NOW, and also other flags...
@@ -579,7 +579,8 @@ impl<'process> Linker<'process> {
             let so = self.working_set.remove(soname).unwrap();
             self.link_map.push(so);
         }
-        println!("working set is drained: {}", self.working_set.len() == 0);
+        println!("<dryad> working set is drained: {}", self.working_set.len() == 0);
+        println!("<dryad> link_map ptr: {:#?}, cap = len: {}", self.link_map.as_ptr(), self.link_map.capacity() == self.link_map.len());
         // <join>
         // 2. relocate all
         // TODO: after _all_ SharedObject have been loaded, it is safe to relocate if we stick to ELF symbol search rule of first search executable, then in each of DT_NEEDED in order, then deps of first DT_NEEDED, and if not found, then deps of second DT_NEEDED, etc., i.e., breadth-first search.  Why this is allowed to continue past the executable's _OWN_ dependency list is anyone's guess; a penchant for chaos perhaps?
@@ -610,18 +611,16 @@ impl<'process> Linker<'process> {
         // I believe we can parallelize the relocation pass by:
         // 1. skipping constructors, or blocking until the linkmaps deps are signalled as finished
         // 2. if skip, rerun through the link map again and call each constructor, since the GOT was prepared and now dynamic calls are ready
-        for (i, so) in self.link_map.iter().enumerate() {
+        for so in self.link_map.iter() {
             self.relocate_plt(so);
         }
 
         // <join>
-        // 3. relocate executable and transfer control
+        // 3. transfer control
 
-//        println!("Relocating executable");
-//        self.relocate_got(0, &self.link_map[0]);
-
-        // we safely loaded and relocated everything, so we can now forget the working_set so it doesn't segfault when we try to access it back again after passing through assembly to `dryad_resolve_symbol`, which from the compiler's perspective means it needs to be dropped
-        println!("<dryad> link_map ptr: {:#?}, cap = len: {}", self.link_map.as_ptr(), self.link_map.capacity() == self.link_map.len());
+        // we safely loaded and relocated everything, dryad will be forgotten when after we return Ok
+        // so it doesn't segfault when we try to access it back again after passing through assembly to `dryad_resolve_symbol`,
+        // which from the compiler's perspective means it needs to be dropped
         Ok (())
     }
 }
