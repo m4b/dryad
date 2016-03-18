@@ -4,8 +4,6 @@
 // 2. Is the `strtab` _always_ after the `symtab` in terms of binary offset, and hence we can compute the size of the symtab by subtracting the two?
 // TODO: LOAD THE VDSO: linux-vdso.so.1
 // TODO: implement the gnu symbol lookup with bloom filter
-// TODO: use link_map
-// TODO: compute flattened dependency list and relocate in order (not using hashmap values)
 // start linking some symbols!
 use std::collections::HashMap;
 use std::boxed::Box;
@@ -169,8 +167,6 @@ extern {
 }
 
 /// The dynamic linker
-/// TODO: remove working set from mem::forget as the got[1] entry, and instead add the flattened link_map as the rendevous structure that is one-time allocated and then forgotten (then reconstituted back in dryad_resolve_symbol)
-/// TODO: add lib vector or lib working_set and lib finished_set
 /// TODO: Change permissions on most of these fields
 pub struct Linker<'process> {
     // TODO: maybe remove base
@@ -184,7 +180,6 @@ pub struct Linker<'process> {
     working_set: Box<HashMap<String, SharedObject<'process>>>,
     link_map_order: Vec<String>,
     link_map: Vec<SharedObject<'process>>,
-//    link_map: Vec<LinkData<'process>>,
     // TODO: add a set of SharedObject names which a dryad thread inserts into after stealing work to load a SharedObject;
     // this way when other threads check to see if they should load a dep, they can skip from adding it to the set because it's being worked on
     // TODO: lastly, must determine a termination condition to that indicates all threads have finished recursing and no more work is waiting, and hence can transition to the relocation stage
@@ -210,22 +205,28 @@ extern {
     fn _dryad_resolve_symbol();
 }
 
+/// The data structure which allows runtime lazy binding.  A pointer to this structure is placed in a binaries GOT[1],
+/// and reconstructed in `dryad_resolve_symbol`
+#[repr(C)]
+pub struct Rendezvous<'a> {
+    pub idx: usize,
+    pub link_map: &'a[SharedObject<'a>],
+}
+
 #[no_mangle]
-pub extern fn dryad_resolve_symbol (link_map_ptr: *const usize, rela_idx: usize) -> usize {
+pub extern fn dryad_resolve_symbol (rndzv_ptr: *const Rendezvous, rela_idx: usize) -> usize {
     unsafe {
-        println!("<dryad_resolve_symbol> link_map_ptr: {:#?} rela_idx: {}", link_map_ptr, rela_idx);
-        let rdvz = Box::from_raw(link_map_ptr as *mut (usize, *mut SharedObject, usize));
-        let idx = rdvz.0;
-        let link_map: &[SharedObject] = slice::from_raw_parts(rdvz.1, rdvz.2);
-        let requesting_so = &link_map[idx];
-        let rela = &requesting_so.pltrelatab[rela_idx];
-        let requested_symbol = &requesting_so.symtab[rela::r_sym(rela.r_info) as usize];
-        let name = &requesting_so.strtab[requested_symbol.st_name as usize];
-        println!("<dryad_resolve_symbol> reconstructed link_map of size {} with requesting binary {:#?} for symbol with rela idx {} for symbol {}", link_map.len(), requesting_so.name, rela_idx, name);
+        println!("<dryad_resolve_symbol> link_map_ptr: {:#?} rela_idx: {}", rndzv_ptr, rela_idx);
+        let rndzv = &*(rndzv_ptr); // dereference the data structure
+        let link_map = rndzv.link_map;
+        let requesting_so = &link_map[rndzv.idx]; // get who called us using the index in the data structure
+        let rela = &requesting_so.pltrelatab[rela_idx]; // now get the relocation using the rela_idx the binary pushed onto the stack
+        let requested_symbol = &requesting_so.symtab[rela::r_sym(rela.r_info) as usize]; // obtain the actual symbol being requested
+        let name = &requesting_so.strtab[requested_symbol.st_name as usize]; // ... and now it's name, which we'll use to search
+        println!("<dryad_resolve_symbol> reconstructed link_map of size {} with requesting binary {:#?} for symbol {} with rela idx {}", link_map.len(), requesting_so.name, name, rela_idx);
         for (i, so) in link_map.iter().enumerate() {
             if let Some (symbol) = so.find(name) {
                 println!("<dryad_resolve_symbol> binding \"{}\" in {} to {} at address 0x{:x}", name, so.name, requesting_so.name, symbol);
-                mem::forget(rdvz); // otherwise it gets dropped and is corrupted
                 return symbol as usize
             }
         }
@@ -393,32 +394,27 @@ impl<'process> Linker<'process> {
     /// is, the jmp instruction at `.PLT1` will transfer to `name1`, instead of "falling
     /// through" to the pushq instruction.
     fn prepare_got<'a> (&self, idx: usize, pltgot: *const u64, name: &'a str) {
-//        println!("preparing got for: {:?}", so);
+
         if pltgot.is_null() {
             println!("<dryad> empty pltgot for {}", name);
             return
         }
-        // TODO: I had to go and break this working version to use a custom vector of LinkData because there's something wrong with me.
+
+        let len = self.link_map.len();
+        let rndzv = Box::new(Rendezvous { idx: idx, link_map: self.link_map.as_slice() });
+
         unsafe {
-            // TODO: fix the mut borrows here
             // got[0] == the program's address of the _DYNAMIC array, equal to address of the PT_DYNAMIC.ph_vaddr + load_bias
             // got[1] == "is the pointer to a data structure that the dynamic linker manages. This data structure is a linked list of nodes corresponding to the symbol tables for each shared library linked with the program. When a symbol is to be resolved by the linker, this list is traversed to find the appropriate symbol."
-            let second_entry = pltgot.offset(1) as *mut u64;
+            let second_entry = pltgot.offset(1) as *mut *mut Rendezvous;
             // got[2] == the dynamic linker's runtime symbol resolver
-            let third_entry = pltgot.offset(2) as *mut u64;
+            let third_entry = pltgot.offset(2) as *mut usize;
 
-            /* if we use a vector of link map data and an index as the other pair for _who_ we are then this probably works better than rewinding the fucking link map every time, except we allocate a pair every time also...
-            let pair = Box::new((name as *const str, &*(self.working_set) as *const HashMap<String, SharedObject>));
-            let pair_ptr: *mut (*const str, *const HashMap<String, SharedObject>) = Box::into_raw(pair);
-            *second_entry = pair_ptr as u64;
-            */
-            let len = self.link_map.len();
-            let rdvz = Box::new((idx, self.link_map.as_slice(), len));
-            println!("rdvz idx {} with len {}", idx, len);
-            *second_entry = Box::into_raw(rdvz) as u64;
-            *third_entry = _dryad_resolve_symbol as u64;
-            println!("<dryad> finished got setup for {} GOT[1] = {:#x} GOT[2] = {:#x}", name, *second_entry, *third_entry);
+            *second_entry = Box::into_raw(rndzv);
+            *third_entry = _dryad_resolve_symbol as usize;
+            println!("<dryad> finished got setup for {} GOT[1] = {:?} GOT[2] = {:#x}", name, *second_entry, *third_entry);
         }
+
     }
 
     #[no_mangle]
@@ -629,9 +625,6 @@ impl<'process> Linker<'process> {
 
         // we safely loaded and relocated everything, so we can now forget the working_set so it doesn't segfault when we try to access it back again after passing through assembly to `dryad_resolve_symbol`, which from the compiler's perspective means it needs to be dropped
         println!("<dryad> link_map ptr: {:#?}, cap = len: {}", self.link_map.as_ptr(), self.link_map.capacity() == self.link_map.len());
-        mem::forget(&self.link_map);
-//        mem::forget(self);
-
         Ok (())
     }
 }

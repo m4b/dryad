@@ -57,7 +57,7 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
         // (https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
         // line 786:
         // > Ho ho.  We are not the program interpreter!  We are the program itself!
-        println!("-=|dryad====-\nHo ho.  We are not the program interpreter!  We are the program itself!\n"); // TODO: add box drawing random character gen here cause it'll be _cute_
+        println!("-=|dryad====-\nHo ho.  We are not the program interpreter!  We are the program itself!"); // TODO: add box drawing random character gen here cause it'll be _cute_
         _exit(0);
         return 0xd47ad // to make compiler happy
     }
@@ -71,7 +71,8 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
                 _exit(1);
                 0xd47ad
             } else {
-                // verify minimum forget parameters, this comment could be obsolete: if we don't forget the entire dryad linker then internal heap-allocated strings get corrupted, like SharedObject.name
+                // verify minimum forget, but right now
+                //if we don't forget the entire dryad linker then internal heap-allocated strings get corrupted, like SharedObject.name
                 // "Blessed are the forgetful, for they get the better even of their blunders."
                 // "Without forgetting it is quite impossible to live at all."
                 mem::forget(dryad);
