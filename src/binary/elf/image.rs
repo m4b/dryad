@@ -3,6 +3,7 @@ use std::fmt;
 
 //use utils::*;
 
+use binary::elf::header::Header;
 use binary::elf::program_header;
 use binary::elf::program_header::ProgramHeader;
 use binary::elf::dyn;
@@ -41,6 +42,7 @@ pub struct LinkInfo {
     pub needed_count: usize,
     pub flags: u64,
     pub flags_1: u64,
+    pub soname: usize,
 }
 
 impl LinkInfo {
@@ -71,6 +73,7 @@ impl LinkInfo {
         let mut needed_count = 0;
         let mut flags = 0;
         let mut flags_1 = 0;
+        let mut soname = 0;
         for dyn in dynamic {
             match dyn.d_tag {
                 dyn::DT_RELA => rela = dyn.d_val + bias, // .rela.dyn
@@ -99,6 +102,7 @@ impl LinkInfo {
                 dyn::DT_NEEDED => needed_count += 1,
                 dyn::DT_FLAGS => flags = dyn.d_val,
                 dyn::DT_FLAGS_1 => flags_1 = dyn.d_val,
+                dyn::DT_SONAME => soname = dyn.d_val,
                 _ => ()
             }
         }
@@ -130,6 +134,7 @@ impl LinkInfo {
             needed_count: needed_count,
             flags: flags,
             flags_1: flags_1,
+            soname: soname as usize,
         }
     }
 }
@@ -195,7 +200,7 @@ impl<'process> Executable<'process> {
     pub fn new (name: &'static str, phdr_addr: u64, phnum: usize) -> Result<Executable<'process>, String> {
         unsafe {
             let addr = phdr_addr as *const ProgramHeader;
-            let phdrs = program_header::to_phdr_array(addr, phnum);
+            let phdrs = ProgramHeader::from_raw_parts(addr, phnum);
             let mut base = 0;
             let mut load_bias = 0;
 
@@ -294,10 +299,38 @@ pub struct SharedObject<'mmap> {
 
 impl<'process> SharedObject<'process> {
 
+    /// Assumes the object referenced by the ptr has already been mmap'd or loaded into memory some way
+    pub unsafe fn from_raw (ptr: u64) -> SharedObject<'process> {
+        let header = &*(ptr as *const Header);
+        let phdrs = ProgramHeader::from_raw_parts((header.e_phoff + ptr) as *const ProgramHeader, header.e_phnum as usize);
+        let dynamic = dyn::get_dynamic_array(ptr as u64, phdrs).unwrap();
+        let link_info = LinkInfo::new(&dynamic, ptr);
+        let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM as u64;
+        let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms as usize);
+        let strtab = Strtab::new(link_info.strtab as *const u8, link_info.strsz as usize);
+        let soname = strtab[link_info.soname].to_string(); // TODO: remove this allocation
+        let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
+        let pltrelatab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
+        SharedObject {
+            name: soname,
+            load_bias: ptr,
+            map_begin: 0,
+            map_end: 0,
+            libs: Vec::new(),
+            phdrs: phdrs.to_owned(),
+            dynamic: dynamic,
+            symtab: symtab,
+            strtab: strtab,
+            relatab: relatab,
+            pltrelatab: pltrelatab,
+            pltgot: link_info.pltgot as *const u64,
+        }
+    }
+
     pub fn from_executable (name: &'static str, phdr_addr: u64, phnum: usize) -> Result<SharedObject<'process>, String> {
         unsafe {
             let addr = phdr_addr as *const ProgramHeader;
-            let phdrs = program_header::to_phdr_array(addr, phnum);
+            let phdrs = ProgramHeader::from_raw_parts(addr, phnum);
 //            let mut base = 0;
             let mut load_bias = 0;
 

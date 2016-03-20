@@ -108,15 +108,15 @@ impl ProgramHeader {
         write_u64(self.p_align as u64, false);
         write(&"\n");
     }
-}
 
-pub fn from_bytes<'a>(bytes: &'a Vec<u8>, phnum: usize) -> &'a[ProgramHeader] {
-    unsafe { slice::from_raw_parts(bytes.as_ptr() as *const ProgramHeader, phnum) }
-//    unsafe { mem::transmute(bytes) }
-}
+    pub fn from_bytes<'a>(bytes: &'a Vec<u8>, phnum: usize) -> &'a[ProgramHeader] {
+        unsafe { slice::from_raw_parts(bytes.as_ptr() as *const ProgramHeader, phnum) }
+    }
 
-pub unsafe fn to_phdr_array<'a>(phdrp: *const ProgramHeader, phnum: usize) -> &'a[ProgramHeader] {
-    slice::from_raw_parts(phdrp, phnum)
+    pub unsafe fn from_raw_parts<'a>(phdrp: *const ProgramHeader, phnum: usize) -> &'a[ProgramHeader] {
+        slice::from_raw_parts(phdrp, phnum)
+    }
+
 }
 
 pub unsafe fn debug_print_phdrs (phdrs: &[ProgramHeader]) {

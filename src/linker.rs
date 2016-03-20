@@ -17,8 +17,9 @@ use std::path::Path;
 //use std::thread;
 //use std::sync::{Arc, Mutex};
 
-use binary::elf::header;
+use binary::elf::header::Header;
 use binary::elf::program_header;
+use binary::elf::program_header::ProgramHeader;
 use binary::elf::dyn;
 use binary::elf::rela;
 use binary::elf::loader;
@@ -97,7 +98,7 @@ impl<'a> fmt::Debug for Config<'a> {
 
 // TODO: this is not inlined with -g
 #[inline]
-fn compute_load_bias(base:u64, phdrs:&[program_header::ProgramHeader]) -> u64 {
+fn compute_load_bias(base:u64, phdrs:&[ProgramHeader]) -> u64 {
     for phdr in phdrs {
         if phdr.p_type == program_header::PT_LOAD {
             return base + (phdr.p_offset - phdr.p_vaddr);
@@ -172,8 +173,7 @@ pub struct Linker<'process> {
     // TODO: maybe remove base
     pub base: u64,
     pub load_bias: u64,
-    pub vdso: u64,
-    pub ehdr: &'process header::Header,
+    pub ehdr: &'process Header,
     pub phdrs: &'process [program_header::ProgramHeader],
     pub dynamic: &'process [dyn::Dyn],
     config: Config<'process>,
@@ -187,10 +187,9 @@ pub struct Linker<'process> {
 
 impl<'process> fmt::Debug for Linker<'process> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "base: {:x} load_bias: {:x} vdso: {:x} ehdr: {:#?} phdrs: {:#?} dynamic: {:#?} Config: {:#?}",
+        write!(f, "base: {:x} load_bias: {:x} ehdr: {:#?} phdrs: {:#?} dynamic: {:#?} Config: {:#?}",
                self.base,
                self.load_bias,
-               self.vdso,
                self.ehdr,
                self.phdrs,
                self.dynamic,
@@ -242,12 +241,11 @@ impl<'process> Linker<'process> {
     pub fn new<'kernel> (base: u64, block: &'kernel kernel_block::KernelBlock) -> Result<Linker<'kernel>, &'static str> {
         unsafe {
 
-            let ehdr = header::unsafe_as_header(base as *const u64);
+            let ehdr = &*(base as *const Header);
             let addr = (base + ehdr.e_phoff) as *const program_header::ProgramHeader;
-            let phdrs = program_header::to_phdr_array(addr, ehdr.e_phnum as usize);
+            let phdrs = ProgramHeader::from_raw_parts(addr, ehdr.e_phnum as usize);
             let load_bias = compute_load_bias(base, &phdrs);
-            let vdso = block.getauxval(auxv::AT_SYSINFO_EHDR).unwrap();
-
+            let vdso_addr = block.getauxval(auxv::AT_SYSINFO_EHDR).unwrap();
             if let Some(dynamic) = dyn::get_dynamic_array(load_bias, &phdrs) {
 
                 let relocations = get_linker_relocations(load_bias, &dynamic);
@@ -264,19 +262,21 @@ impl<'process> Linker<'process> {
                  }
                  */
 
-                // we relocated ourselves so it should be safe to heap allocate
-                let working_set = Box::new(HashMap::new());
-
+                // we relocated ourselves so it should be safe to use global data and allocate
+                let mut working_set = Box::new(HashMap::new());
+                let vdso = SharedObject::from_raw(vdso_addr);
+                let mut link_map_order = Vec::new();
+                link_map_order.push(vdso.name.to_string());
+                working_set.insert(vdso.name.to_string(), vdso);
                 Ok (Linker {
                     base: base,
                     load_bias: load_bias,
-                    vdso: vdso,
                     ehdr: &ehdr,
                     phdrs: &phdrs,
                     dynamic: &dynamic,
                     config: Config::new(&block),
                     working_set: working_set,
-                    link_map_order: Vec::new(),
+                    link_map_order: link_map_order,
                     link_map: Vec::new(),
                 })
 

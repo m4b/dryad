@@ -64,38 +64,13 @@ impl fmt::Debug for Header {
     }
 }
 
+impl Header {
 
-// this is not unsafe because the header's size is encoded in the function
-pub fn from_bytes<'a>(bytes: &'a[u8; EHDR_SIZE]) -> &'a Header {
-    unsafe { mem::transmute(bytes) }
-/*
-    Header {
-        e_ident: &bytes[0..15],
-        e_type: 0,
-        e_machine: 0,
-        e_version: 0,
-        e_entry: 0,
-        e_phoff: 0,
-        e_shoff: 0,
-        e_flags: 0,
-        e_ehsize: 0,
-        e_phentsize: 0,
-        e_phnum: 0,
-        e_shentsize: 0,
-        e_shnum: 0,
-        e_shstrndx: 0,
+    // this is not unsafe because the header's size is encoded in the function, although the header can be semantically invalid
+    pub fn from_bytes<'a>(bytes: &'a[u8; EHDR_SIZE]) -> &'a Header {
+        unsafe { mem::transmute(bytes) }
     }
-*/
-}
 
-pub unsafe fn unsafe_as_header<'a>(hdrp: *const u64) -> &'a Header {
-    mem::transmute(hdrp)
-        //        let e_ident = slice::from_raw_parts(hdrp, 16);
-        //        let e_type = 
-        //        Header{  }
-}
-
-impl Header {    
     pub unsafe fn debug_print (&self) {
         write(&"-=Elf64_hdr=-\n");
         write(&"e_type: 0x");

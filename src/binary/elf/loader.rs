@@ -118,7 +118,7 @@ fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u
 }
 
 #[inline(always)]
-fn get_dynamic<'a> (soname: &str, fd: &File, phdrs: &[program_header::ProgramHeader]) -> Result<&'a[dyn::Dyn], String>{
+fn mmap_dynamic<'a> (soname: &str, fd: &File, phdrs: &[program_header::ProgramHeader]) -> Result<&'a[dyn::Dyn], String>{
     for phdr in phdrs {
         if phdr.p_type == program_header::PT_DYNAMIC {
             // mmap
@@ -155,7 +155,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
     let mut elf_header = [0; header::EHDR_SIZE];
     let _ = fd.read(&mut elf_header);
 
-    let elf_header = header::from_bytes(&elf_header);
+    let elf_header = header::Header::from_bytes(&elf_header);
     // TODO: phdr should be mmapped and not copied?
     let mut phdrs: Vec<u8> = vec![0; (elf_header.e_phnum as u64 * program_header::PHDR_SIZE) as usize];
     let _ = fd.read(&mut phdrs);
@@ -165,7 +165,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
 
     // 1.5 mmap the dynamic array with the strtab so we can access them and resolve symbol lookups against this library; this will require mmapping the segments, and storing the dynamic array, along with the strtab; TODO: benchmark against sucking them up ourselves into memory and resolve queries against that way -- probably slower...
 
-    let dynamic = try!(get_dynamic(soname, &fd, phdrs));
+    let dynamic = try!(mmap_dynamic(soname, &fd, phdrs));
     let link_info = LinkInfo::new(&dynamic, 0);
 
     // now get the strtab from the dynamic array
