@@ -569,7 +569,9 @@ impl<'process> Linker<'process> {
             try!(self.load(lib));
         }
 
-        self.link_map_order.dedup(); // arrrrggggh this doesn't arbitrarily reduce duplicates so test/snappy dies earlier
+        self.link_map_order.sort();
+        self.link_map_order.dedup();;
+
         println!("LINK MAP ORDER: {:#?}", self.link_map_order);
 
         self.link_map.reserve_exact(self.link_map_order.len()+1);
