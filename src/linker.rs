@@ -498,8 +498,15 @@ impl<'process> Linker<'process> {
                         let libs = &shared_object.libs.to_owned(); // TODO: fix this unnecessary allocation, but we _must_ insert before iterating
                         self.working_set.insert(soname.to_string(), shared_object);
 
-                        // breadth first addition
-                        self.link_map_order.extend(libs.iter().map(|s| s.to_string()));
+                        // breadth first addition, and unnecessary amount of searching but who cares for now
+                        // this also fixes the snappy dedup problem
+                        for lib in libs {
+                            let mut is_elem = false;
+                            for lib2 in &self.link_map_order {
+                                if lib2 == lib { is_elem = true; break }
+                            }
+                            if !is_elem { self.link_map_order.push(lib.to_string());}
+                        }
 
                         for lib in libs {
                             try!(self.load(lib));
@@ -563,15 +570,11 @@ impl<'process> Linker<'process> {
             try!(self.load(lib));
         }
 
-        //self.link_map_order.sort(); // UGH, this is _broken_, cannot sort our order, just need to dedup our order, but dedup requires sorted >:|
-        self.link_map_order.dedup();;
-
-        println!("LINK MAP ORDER: {:#?}", self.link_map_order);
+        println!("<dryad> link_map_order: {:#?}", self.link_map_order);
 
         self.link_map.reserve_exact(self.link_map_order.len()+1);
         self.link_map.push(image);
         for soname in &self.link_map_order {
-            println!("remove: {:#?}", soname);
             let so = self.working_set.remove(soname).unwrap();
             self.link_map.push(so);
         }
