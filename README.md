@@ -125,7 +125,7 @@ Here are some major todos off the top of my head
 3. **MAJOR**: properly init dynamic linker's TLS.  This terrifies me.
 4. **MAJOR**: someone figure out how to get cargo working + tests + deps + linking, because that would be so, so amazing
 5. add the `rtld_dl_activity` gdb/debugger calls for notifying gdb, et. al when shared libraries are loaded, etc.  This will make debugging lazy plt calls _significantly_ easier.
-5. implement the GNU bloom filter for dem speeds
+5. ~~implement the GNU bloom filter for dem speeds~~
 6. better documentation
 7. fix any number of the todos littered across the code
 8. make unsafe code safer with rust best practices; rust experts definitely needed!

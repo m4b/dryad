@@ -2,9 +2,9 @@
 // Questions from README:
 // 1. Is the `rela` _always_ in a `PT_LOAD` segment?
 // 2. Is the `strtab` _always_ after the `symtab` in terms of binary offset, and hence we can compute the size of the symtab by subtracting the two?
-// TODO: LOAD THE VDSO: linux-vdso.so.1
-// TODO: implement the gnu symbol lookup with bloom filter
-// start linking some symbols!
+// TODO:
+// 1. fix TLS
+// 2. determine reason for libc crashes again :/
 use std::collections::HashMap;
 use std::boxed::Box;
 use std::slice;
@@ -24,6 +24,7 @@ use binary::elf::dyn;
 use binary::elf::rela;
 use binary::elf::loader;
 use binary::elf::image::SharedObject;
+use binary::elf::gnu_hash;
 
 use utils;
 use kernel_block;
@@ -198,6 +199,7 @@ impl<'process> fmt::Debug for Linker<'process> {
     }
 }
 
+// TODO: move these associated functions to separate "rendezvous" file
 extern {
     /// The assembly stub which grabs the stack pointer, aligns and unwinds the stack into parameters and then calls `dryad_resolve_symbol` with those parameters.
     /// _Many_ thanks to Mutabah from `#rust@Mozilla` for suggesting the stack needed to be 16-byte aligned, after I experienced crashes on `movaps %xmm2,0x60(%rsp)`.
@@ -223,8 +225,9 @@ pub extern fn dryad_resolve_symbol (rndzv_ptr: *const Rendezvous, rela_idx: usiz
         let requested_symbol = &requesting_so.symtab[rela::r_sym(rela.r_info) as usize]; // obtain the actual symbol being requested
         let name = &requesting_so.strtab[requested_symbol.st_name as usize]; // ... and now it's name, which we'll use to search
         println!("<dryad_resolve_symbol> reconstructed link_map of size {} with requesting binary {:#?} for symbol {} with rela idx {}", link_map.len(), requesting_so.name, name, rela_idx);
+        let hash = gnu_hash::hash(name);
         for (i, so) in link_map.iter().enumerate() {
-            if let Some (symbol) = so.find(name) {
+            if let Some (symbol) = so.find(name, hash) {
                 println!("<dryad_resolve_symbol> binding \"{}\" in {} to {} at address 0x{:x}", name, so.name, requesting_so.name, symbol);
                 return symbol as usize
             }
@@ -266,8 +269,10 @@ impl<'process> Linker<'process> {
                 let mut working_set = Box::new(HashMap::new());
                 let vdso = SharedObject::from_raw(vdso_addr);
                 let mut link_map_order = Vec::new();
+                let link_map = Vec::new();
                 link_map_order.push(vdso.name.to_string());
                 working_set.insert(vdso.name.to_string(), vdso);
+//                link_map.push(vdso);
                 Ok (Linker {
                     base: base,
                     load_bias: load_bias,
@@ -277,7 +282,7 @@ impl<'process> Linker<'process> {
                     config: Config::new(&block),
                     working_set: working_set,
                     link_map_order: link_map_order,
-                    link_map: Vec::new(),
+                    link_map: link_map,
                 })
 
             } else {
@@ -287,18 +292,14 @@ impl<'process> Linker<'process> {
         }
     }
 
-    // TODO: holy _god_ is this slow; no wonder they switched to a bloom filter.  fix this with proper symbol finding, etc.
-    // HACK for testing, performs shitty linear search using the so's `find` method, which is compounded by * num so's (* number of total relocations in this binary group... ouch)
-    // fn find_symbol(&self, name: &str) -> Option<&sym::Sym> {
     fn find_symbol(&self, name: &str) -> Option<u64> {
+        let hash = gnu_hash::hash(name);
         for so in &self.link_map {
-            //println!("<dryad> searching {} for {}", so.name, name);
-            let addr = so.find(name);
+            let addr = so.find(name, hash);
             if addr != None {
                 return addr
             }
         }
-
         None
     }
 
@@ -424,29 +425,19 @@ impl<'process> Linker<'process> {
         self.prepare_got(idx, object.pltgot, &object.name);
     }
 
-    #[no_mangle]
-    fn resolve_with_ifunc (&self, addr: usize) -> usize {
-        unsafe {
-            let ifunc = mem::transmute::<usize, (fn() -> usize)>(addr);
-            let res = ifunc();
-            println!("<dryad> ifunc says: 0x{:x}", res);
-            res
-        }
-    }
-
     /// TODO: add check for if SO has the DT_BIND_NOW, and also other flags...
-    fn relocate_plt (&self, object: &SharedObject) {
+    fn relocate_plt (&self, so: &SharedObject) {
 
-        let symtab = &object.symtab;
-        let strtab = &object.strtab;
-        let bias = object.load_bias;
+        let symtab = &so.symtab;
+        let strtab = &so.strtab;
+        let bias = so.load_bias;
         let mut count = 0;
 
         // x86-64 ABI, pg. 78:
         // > Much as the global offset table redirects position-independent address calculations
         // > to absolute locations, the procedure linkage table redirects position-independent
         // > function calls to absolute locations.
-        for rela in object.pltrelatab {
+        for rela in so.pltrelatab {
             let typ = rela::r_type(rela.r_info);
             let sym = rela::r_sym(rela.r_info); // index into the sym table
             let symbol = &symtab[sym as usize];
@@ -465,16 +456,19 @@ impl<'process> Linker<'process> {
                 // fun @ (B + A)()
                 rela::R_X86_64_IRELATIVE => {
                     let addr = rela.r_addend + bias as i64;
-                    //println!("<dryad> irelative: bias: {:#x} addend: {:#x} addr: {:#x}", bias, rela.r_addend, addr);
-                    // TODO: just inline this call here, it's so simple, doesn't need a function
-                    unsafe { *reloc = self.resolve_with_ifunc(addr as usize) as u64; }
+//                    println!("<dryad> irelative: bias: {:#x} addend: {:#x} addr: {:#x}", bias, rela.r_addend, addr);
+                    unsafe {
+                        let ifunc = mem::transmute::<usize, (fn() -> usize)>(addr as usize);
+                        *reloc = ifunc() as u64;
+//                        println!("<dryad> ifunc addr: 0x{:x}", *reloc);
+                    }
                     count += 1;
                 },
                 // TODO: add error checking
                 _ => ()
             }
         }
-        println!("<dryad> relocate plt: {} symbols for {}", count, object.name);
+        println!("<dryad> relocate plt: {} symbols for {}", count, so.name);
     }
 
     /// TODO: rename to something like `load_all` to signify on return everything has loaded?
@@ -569,7 +563,7 @@ impl<'process> Linker<'process> {
             try!(self.load(lib));
         }
 
-        self.link_map_order.sort();
+        //self.link_map_order.sort(); // UGH, this is _broken_, cannot sort our order, just need to dedup our order, but dedup requires sorted >:|
         self.link_map_order.dedup();;
 
         println!("LINK MAP ORDER: {:#?}", self.link_map_order);

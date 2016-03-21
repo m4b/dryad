@@ -6,3 +6,4 @@ pub mod sym;
 pub mod loader;
 pub mod image;
 pub mod strtab;
+pub mod gnu_hash;

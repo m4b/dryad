@@ -13,6 +13,7 @@ use binary::elf::sym::Sym;
 use binary::elf::strtab::Strtab;
 use binary::elf::rela;
 use binary::elf::rela::Rela;
+use binary::elf::gnu_hash::GnuHash;
 
 /// Important dynamic LinkInfo generated via a single pass through the _DYNAMIC array
 pub struct LinkInfo {
@@ -295,11 +296,13 @@ pub struct SharedObject<'mmap> {
     pub relatab: &'mmap[Rela],
     pub pltrelatab: &'mmap[Rela],
     pub pltgot: *const u64,
+    pub gnu_hash: GnuHash<'mmap>
 }
 
 impl<'process> SharedObject<'process> {
 
     /// Assumes the object referenced by the ptr has already been mmap'd or loaded into memory some way
+    /// TODO: fix the libs hack
     pub unsafe fn from_raw (ptr: u64) -> SharedObject<'process> {
         let header = &*(ptr as *const Header);
         let phdrs = ProgramHeader::from_raw_parts((header.e_phoff + ptr) as *const ProgramHeader, header.e_phnum as usize);
@@ -311,12 +314,13 @@ impl<'process> SharedObject<'process> {
         let soname = strtab[link_info.soname].to_string(); // TODO: remove this allocation
         let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
         let pltrelatab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
+        let gnu_hash = GnuHash::new(link_info.gnu_hash as *const u32, symtab.len());
         SharedObject {
             name: soname,
             load_bias: ptr,
             map_begin: 0,
             map_end: 0,
-            libs: Vec::new(),
+            libs: Vec::new(), // TODO: fix this
             phdrs: phdrs.to_owned(),
             dynamic: dynamic,
             symtab: symtab,
@@ -324,6 +328,7 @@ impl<'process> SharedObject<'process> {
             relatab: relatab,
             pltrelatab: pltrelatab,
             pltgot: link_info.pltgot as *const u64,
+            gnu_hash: gnu_hash,
         }
     }
 
@@ -370,6 +375,7 @@ impl<'process> SharedObject<'process> {
                     relatab: relatab,
                     pltrelatab: pltrelatab,
                     pltgot: pltgot,
+                    gnu_hash: GnuHash::new(link_info.gnu_hash as *const u32, symtab.len()),
                 })
 
             } else {
@@ -379,16 +385,10 @@ impl<'process> SharedObject<'process> {
         }
     }
 
-    pub fn find (&self, symbol: &str) -> Option<u64> {
-        for sym in self.symtab {
-            if !sym::is_import(&sym) &&
-                &self.strtab[sym.st_name as usize] == symbol {
-                return Some (sym.st_value + self.load_bias)
-            }
-        }
-        None
+    pub fn find (&self, name: &str, hash: u32) -> Option<u64> {
+//        println!("<{}.find> finding symbol: {}", self.name, symbol);
+        self.gnu_hash.find(name, hash, self)
     }
-
 }
 
 impl<'mmap> fmt::Debug for SharedObject<'mmap> {

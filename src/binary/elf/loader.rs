@@ -19,6 +19,7 @@ use binary::elf::sym;
 use binary::elf::rela;
 use binary::elf::strtab::Strtab;
 use binary::elf::image::{LinkInfo, SharedObject};
+use binary::elf::gnu_hash::GnuHash;
 
 extern {
     /// libc #defines errno *(__errno_location()) ... so errno isn't a symbol in the actual binary and accesses will segfault us. yay.
@@ -274,6 +275,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
         relatab: relatab,
         pltrelatab: pltrelatab,
         pltgot: pltgot as *const u64,
+        gnu_hash: GnuHash::new((link_info.gnu_hash + load_bias) as *const u32, symtab.len()),
     };
 
     Ok (shared_object)
