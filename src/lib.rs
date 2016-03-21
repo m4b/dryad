@@ -18,8 +18,6 @@ mod utils;
 mod binary;
 pub mod linker;
 
-use std::mem;
-
 use kernel_block::KernelBlock;
 use utils::*;
 
@@ -63,7 +61,7 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
     }
 
     match linker::Linker::new(linker_base, &block) {
-        Ok (mut dryad) => {
+        Ok (dryad) => {
             println!("Dryad:\n  {:#?}", &dryad);
 
             if let Err(msg) = dryad.link(&block) {
@@ -71,11 +69,6 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
                 _exit(1);
                 0xd47ad
             } else {
-                // verify minimum forget, but right now
-                //if we don't forget the entire dryad linker then internal heap-allocated strings get corrupted, like SharedObject.name
-                // "Blessed are the forgetful, for they get the better even of their blunders."
-                // "Without forgetting it is quite impossible to live at all."
-                mem::forget(dryad);
                 entry
             }
         },

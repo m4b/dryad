@@ -530,7 +530,7 @@ impl<'process> Linker<'process> {
     /// 2. Then, creates the link map, and then relocates all the shared object dependencies and joins the result
     /// 3. Finally, relocates the executable, and then transfers control
     #[no_mangle]
-    pub fn link(&mut self, block: &kernel_block::KernelBlock) -> Result<(), String> {
+    pub fn link(mut self, block: &kernel_block::KernelBlock) -> Result<(), String> {
 
 
         // Fun Fact: uncomment this for ridiculous disaster: runs fine when links itself, but not when it links an executable, because hell
@@ -617,9 +617,12 @@ impl<'process> Linker<'process> {
         // <join>
         // 3. transfer control
 
-        // we safely loaded and relocated everything, dryad will be forgotten when after we return Ok
-        // so it doesn't segfault when we try to access it back again after passing through assembly to `dryad_resolve_symbol`,
-        // which from the compiler's perspective means it needs to be dropped
+        // we safely loaded and relocated everything, dryad will now forget itself
+        // so the structures we setup don't segfault when we try to access them back again after passing through assembly to `dryad_resolve_symbol`,
+        // which from the compiler's perspective means they needs to be dropped
+        // "Blessed are the forgetful, for they get the better even of their blunders."
+        // "Without forgetting it is quite impossible to live at all."
+        mem::forget(self);
         Ok (())
     }
 }
