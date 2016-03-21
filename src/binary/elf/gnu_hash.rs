@@ -90,7 +90,11 @@ impl<'process> GnuHash<'process> {
     }
 
     #[inline(always)]
-    fn filter(&self, hash: u32, symbol: &str, bloom_idx: u32, bitmask: u32, h2: u32) -> bool {
+    fn filter(&self, hash: u32) -> bool {
+        let bloom_idx = (hash / self.maskbits) & self.maskwords_bitmask;
+        let h2 = hash >> self.shift2;
+        let bitmask = (1u64 << (hash % self.maskbits)) | (1u64 << (h2 % self.maskbits));
+//        println!("lookup: maskwords: {} bloom_idx: {} bitmask: {} shift2: {}", self.maskwords, bloom_idx, bitmask, self.shift2);
         let filter = self.bloomwords[bloom_idx as usize];
         filter & (bitmask as usize) != (bitmask as usize) // if true, def _don't have_
     }
@@ -98,13 +102,7 @@ impl<'process> GnuHash<'process> {
     /// Provide a name, a hash of that name, and the so to look in (which should have a reference to this self) -
     /// and we'll return an address option.
     pub fn find (&self, name: &str, hash: u32, so: &SharedObject) -> Option<u64> {
-
-        let bloom_idx = (hash / self.maskbits) & self.maskwords_bitmask;
-        let h2 = hash >> self.shift2;
-        let bitmask = (1u64 << (hash % self.maskbits)) | (1u64 << (h2 % self.maskbits));
-//        println!("lookup: maskwords: {} bloom_idx: {} bitmask: {} shift2: {}", self.maskwords, bloom_idx, bitmask, self.shift2);
-        let does_not_have = self.filter(hash, name, bloom_idx, bitmask as u32, h2);
-        if does_not_have {
+        if self.filter(hash) {
             None
         } else {
             self.lookup(hash, name, so.load_bias, &so.strtab, &so.symtab)
