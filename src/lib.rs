@@ -16,6 +16,7 @@ mod auxv;
 mod kernel_block;
 mod utils;
 mod binary;
+pub mod runtime;
 pub mod linker;
 
 use kernel_block::KernelBlock;
