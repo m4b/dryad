@@ -204,6 +204,7 @@ impl<'process> SharedObject<'process> {
         let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM as u64;
         let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms as usize);
         let strtab = Strtab::new(link_info.strtab as *const u8, link_info.strsz as usize);
+        let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
         let soname = strtab[link_info.soname].to_string(); // TODO: remove this allocation
         let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
         let pltrelatab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
@@ -213,7 +214,7 @@ impl<'process> SharedObject<'process> {
             load_bias: ptr,
             map_begin: 0,
             map_end: 0,
-            libs: Vec::new(), // TODO: fix this
+            libs: libs,
             phdrs: phdrs.to_owned(),
             dynamic: dynamic,
             symtab: symtab,
@@ -244,12 +245,11 @@ impl<'process> SharedObject<'process> {
             if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
 
                 let link_info = LinkInfo::new(dynamic, load_bias);
-                let libs = dyn::get_needed(dynamic, load_bias, link_info.strtab, link_info.needed_count);
-
                 // TODO: swap out the link_info syment with compile time constant SIZEOF_SYM?
                 let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment) as usize; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
                 let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms);
                 let strtab = Strtab::new(link_info.strtab as *const u8, link_info.strsz);
+                let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
                 let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
                 let pltrelatab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
 

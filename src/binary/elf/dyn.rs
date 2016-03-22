@@ -9,6 +9,7 @@ use std::slice;
 use std::mem;
 use utils::*;
 use binary::elf::program_header::{ ProgramHeader, PT_DYNAMIC };
+use binary::elf::strtab::Strtab;
 
 pub const DT_NULL: u64 = 0;
 pub const DT_NEEDED: u64 = 1;
@@ -179,15 +180,13 @@ pub unsafe fn get_dynamic_array<'a>(bias: u64, phdrs: &'a [ProgramHeader]) -> Op
     None
 }
 
-/// TODO: use the new Strtab struct for safer indexing
-/// TODO: make sure the bias is used correctly
 /// Gets the needed libraries from the `_DYNAMIC` array, with the str slices lifetime tied to the dynamic arrays lifetime
-pub fn get_needed<'a>(dyns: &'a [Dyn], bias: u64, strtab: u64, count: usize) -> Vec<&'a str> {
+pub fn get_needed<'a, 'b>(dyns: &'a [Dyn], strtab: &'b Strtab<'a>, count: usize) -> Vec<&'a str> {
     let mut needed = Vec::with_capacity(count);
     for dyn in dyns {
         if dyn.d_tag == DT_NEEDED {
-            let string = str_at((strtab + bias) as *const u8, dyn.d_val as isize);
-            needed.push(string);
+            let lib = strtab.get(dyn.d_val as usize);
+            needed.push(lib);
         }
     }
     needed

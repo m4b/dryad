@@ -173,7 +173,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
     let (strtab_start, strtab_size, strtab_data) = try!(map_fragment(&fd, 0, link_info.strtab, link_info.strsz));
     let strtab = Strtab::new(strtab_data as *const u8, link_info.strsz as usize);
 
-    let needed = dyn::get_needed(dynamic, 0, strtab_data as u64, link_info.needed_count);
+    let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
 
     let symtab_ptr = link_info.symtab as *const sym::Sym;
     // let (symtab_start, symtab_size, symtab_data) = try!(map_fragment(&fd, 0, link_info.symtab, 2192 * sym::SIZEOF_SYM as u64));
@@ -263,7 +263,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
     let shared_object = SharedObject {
         name: soname.to_string(), // this gets corrupted if we _don't_ mem::forget all of dryad
         load_bias: load_bias,
-        libs: needed,
+        libs: libs,
         map_begin: start,
         map_end: end,
         // TODO: mmap phdrs ? i don't think we need them so probably not
