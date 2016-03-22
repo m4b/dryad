@@ -171,11 +171,11 @@ impl fmt::Debug for LinkInfo {
 /// 3. the executable we're interpreting
 pub struct SharedObject<'process> {
     pub name: &'process str,
-    pub load_bias: u64,
+    pub load_bias: u64, // TODO: change this to addr or base_addr load_bias is stupid
     pub map_begin: u64,
     pub map_end: u64,
     pub libs: Vec<&'process str>,
-    pub phdrs: Vec<ProgramHeader>, // todo remove the vec
+    pub phdrs: &'process[ProgramHeader],
     pub dynamic: &'process[Dyn],
     pub strtab: Strtab<'process>,
     pub symtab: &'process[Sym],
@@ -214,7 +214,7 @@ impl<'process> SharedObject<'process> {
             map_begin: 0,
             map_end: 0,
             libs: libs,
-            phdrs: phdrs.to_owned(),
+            phdrs: phdrs,
             dynamic: dynamic,
             symtab: symtab,
             strtab: strtab,
@@ -260,7 +260,7 @@ impl<'process> SharedObject<'process> {
                     map_begin: 0,
                     map_end: 0,
                     libs: libs,
-                    phdrs: phdrs.to_owned(),
+                    phdrs: phdrs,
                     dynamic: dynamic,
                     symtab: symtab,
                     strtab: strtab,

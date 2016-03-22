@@ -164,6 +164,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
     // TODO: replace with the mmap'd version or see if we can just forget about program headers being stored altogether
     let phdrs = unsafe { slice::from_raw_parts(phdrs.as_ptr() as *const program_header::ProgramHeader, elf_header.e_phnum as usize) } ;
 
+    // TODO: swap location of this after the load bias computation so we can construct the LinkInfo with the load bias and not worry about other nonsense
     // 1.5 mmap the dynamic array with the strtab so we can access them and resolve symbol lookups against this library; this will require mmapping the segments, and storing the dynamic array, along with the strtab; TODO: benchmark against sucking them up ourselves into memory and resolve queries against that way -- probably slower...
 
     let dynamic = try!(mmap_dynamic(soname, &fd, phdrs));
@@ -266,8 +267,9 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
         libs: libs,
         map_begin: start,
         map_end: end,
-        // TODO: mmap phdrs ? i don't think we need them so probably not
-        phdrs: phdrs.to_owned(),
+        // TODO: if we do not mmap the phdrs they come back broken and garbled since they get dropped by the compiler, as the slice's backing vec is de-alloc'd after this scope ends
+        // not important since we don't use (and we might be able to just drop the phdrs completely since they shouldn't need to be used by the linking process
+        phdrs: phdrs,
         dynamic: dynamic,
         // TODO: make symtab indexable like strtab
         symtab: symtab,
