@@ -271,7 +271,6 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
         // not important since we don't use (and we might be able to just drop the phdrs completely since they shouldn't need to be used by the linking process
         phdrs: phdrs,
         dynamic: dynamic,
-        // TODO: make symtab indexable like strtab
         symtab: symtab,
         strtab: strtab,
         relatab: relatab,

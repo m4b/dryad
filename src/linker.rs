@@ -179,7 +179,7 @@ pub struct Linker<'process> {
     pub phdrs: &'process [program_header::ProgramHeader],
     pub dynamic: &'process [dyn::Dyn],
     config: Config<'process>,
-    working_set: Box<HashMap<String, SharedObject<'process>>>,
+    working_set: Box<HashMap<String, SharedObject<'process>>>, // TODO: we can eventually drop this or have it stack local var instead of field
     link_map_order: Vec<String>,
     link_map: Vec<SharedObject<'process>>,
     // TODO: add a set of SharedObject names which a dryad thread inserts into after stealing work to load a SharedObject;
@@ -200,9 +200,6 @@ impl<'process> fmt::Debug for Linker<'process> {
     }
 }
 
-/// TODO:
-/// 1. add config logic path based on env variables
-/// 2. be able to link against linux vdso
 impl<'process> Linker<'process> {
     pub fn new<'kernel> (base: u64, block: &'kernel kernel_block::KernelBlock) -> Result<Linker<'kernel>, &'static str> {
         unsafe {
@@ -256,6 +253,8 @@ impl<'process> Linker<'process> {
     }
 
     fn find_symbol(&self, name: &str) -> Option<u64> {
+        // actually, this is an unfair optimization; the library might use a different hash system, like sysv
+        // in which case we can't pre-hash using gnu_hash, unless we assume every lib uses gnu_hash :/
         let hash = gnu_hash::hash(name);
         for so in &self.link_map {
             let addr = so.find(name, hash);
