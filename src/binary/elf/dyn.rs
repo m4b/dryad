@@ -10,11 +10,6 @@ use std::mem;
 use utils::*;
 use binary::elf::program_header::{ ProgramHeader, PT_DYNAMIC };
 
-
-/*
- CONSTS
-*/
-
 pub const DT_NULL: u64 = 0;
 pub const DT_NEEDED: u64 = 1;
 pub const DT_PLTRELSZ: u64 = 2;

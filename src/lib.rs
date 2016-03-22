@@ -20,6 +20,7 @@ pub mod runtime;
 pub mod linker;
 
 use kernel_block::KernelBlock;
+use linker::Linker;
 use utils::*;
 
 extern crate libc;
@@ -61,7 +62,7 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
         return 0xd47ad // to make compiler happy
     }
 
-    match linker::Linker::new(linker_base, &block) {
+    match Linker::new(linker_base, &block) {
         Ok (dryad) => {
             println!("Dryad:\n  {:#?}", &dryad);
 
