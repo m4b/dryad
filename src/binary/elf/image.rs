@@ -170,7 +170,7 @@ impl fmt::Debug for LinkInfo {
 /// 2. the vdso provided by the kernel
 /// 3. the executable we're interpreting
 pub struct SharedObject<'process> {
-    pub name: String,
+    pub name: &'process str,
     pub load_bias: u64,
     pub map_begin: u64,
     pub map_end: u64,
@@ -205,12 +205,11 @@ impl<'process> SharedObject<'process> {
         let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms as usize);
         let strtab = Strtab::new(link_info.strtab as *const u8, link_info.strsz as usize);
         let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
-        let soname = strtab[link_info.soname].to_string(); // TODO: remove this allocation
         let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
         let pltrelatab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
         let gnu_hash = GnuHash::new(link_info.gnu_hash as *const u32, symtab.len());
         SharedObject {
-            name: soname,
+            name: strtab.get(link_info.soname),
             load_bias: ptr,
             map_begin: 0,
             map_end: 0,
@@ -256,7 +255,7 @@ impl<'process> SharedObject<'process> {
                 let pltgot = link_info.pltgot as *const u64;
 
                 Ok (SharedObject {
-                    name: name.to_string(),
+                    name: name,
                     load_bias: load_bias,
                     map_begin: 0,
                     map_end: 0,

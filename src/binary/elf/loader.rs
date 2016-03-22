@@ -261,7 +261,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
     println!("Done");
 
     let shared_object = SharedObject {
-        name: soname.to_string(), // this gets corrupted if we _don't_ mem::forget all of dryad
+        name: strtab.get(link_info.soname),
         load_bias: load_bias,
         libs: libs,
         map_begin: start,
