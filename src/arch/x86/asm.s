@@ -8,7 +8,7 @@ _dryad_fini:
 	// TODO: fix in lib.rs: _start needs to get a stack and argc that looks like it was executed directly, i believe this might be the final cause of the segfault in dynamic linking, because certain arguments in the stack are too high?
 
 .section .data
-_addr_of_dryad_init: .quad _dryad_init
+_addr_of_dryad_init: .quad dryad_init
 _addr_of_dryad_resolve_symbol: .quad dryad_resolve_symbol
 
 
