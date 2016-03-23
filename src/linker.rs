@@ -14,7 +14,7 @@ use std::fs::File;
 use std::path::Path;
 
 //use scoped_thread::Pool;
-use std::thread;
+//use std::thread;
 //use std::sync::{Arc, Mutex};
 
 use binary::elf::header::Header;

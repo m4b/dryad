@@ -182,7 +182,7 @@ pub struct SharedObject<'process> {
     pub relatab: &'process[Rela],
     pub pltrelatab: &'process[Rela],
     pub pltgot: *const u64,
-    pub gnu_hash: GnuHash<'process>
+    pub gnu_hash: Option<GnuHash<'process>>
 }
 
 impl<'process> fmt::Debug for SharedObject<'process> {
@@ -207,7 +207,7 @@ impl<'process> SharedObject<'process> {
         let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
         let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
         let pltrelatab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
-        let gnu_hash = GnuHash::new(link_info.gnu_hash as *const u32, symtab.len());
+        let gnu_hash = if link_info.gnu_hash == 0 { None } else { Some (GnuHash::new(link_info.gnu_hash as *const u32, symtab.len())) };
         SharedObject {
             name: strtab.get(link_info.soname),
             load_bias: ptr,
@@ -253,7 +253,7 @@ impl<'process> SharedObject<'process> {
                 let pltrelatab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
 
                 let pltgot = link_info.pltgot as *const u64;
-
+                let gnu_hash = if link_info.gnu_hash == 0 { None } else { Some (GnuHash::new(link_info.gnu_hash as *const u32, symtab.len())) };
                 Ok (SharedObject {
                     name: name,
                     load_bias: load_bias,
@@ -267,11 +267,10 @@ impl<'process> SharedObject<'process> {
                     relatab: relatab,
                     pltrelatab: pltrelatab,
                     pltgot: pltgot,
-                    gnu_hash: GnuHash::new(link_info.gnu_hash as *const u32, symtab.len()),
+                    gnu_hash: gnu_hash,
                 })
 
             } else {
-
                 Err (format!("<dryad> Error: executable {} has no _DYNAMIC array", name))
             }
         }
@@ -279,11 +278,14 @@ impl<'process> SharedObject<'process> {
 
     pub fn find (&self, name: &str, hash: u32) -> Option<u64> {
 //        println!("<{}.find> finding symbol: {}", self.name, symbol);
-        self.gnu_hash.find(name, hash, self)
+        match self.gnu_hash {
+            Some (ref gnu_hash) => gnu_hash.find(name, hash, self),
+            None => None
+        }
     }
 }
 
-
+/*
 unsafe impl<'a> Send for SharedObject<'a> {}
 unsafe impl<'a> Sync for SharedObject<'a> {}
-/**/
+*/

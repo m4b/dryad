@@ -3,4 +3,4 @@ before_install:
   - sudo apt-get -qq update
   - sudo apt-get install -y libsnappy-dev
 install: ./setup.sh
-script: ./make.sh
+script: ./make.sh && ./dryad.so.1

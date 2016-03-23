@@ -256,6 +256,7 @@ pub fn load<'a> (soname: &str, fd: &mut File, debug: bool) -> Result <SharedObje
     */
     //TODO: make this an optional
     let pltgot = if link_info.pltgot == 0 { 0 } else { link_info.pltgot + load_bias }; // musl doesn't have a PLTGOT, for example
+    let gnu_hash = if link_info.gnu_hash == 0 { None } else { Some (GnuHash::new((link_info.gnu_hash + load_bias) as *const u32, symtab.len())) };
 
     let shared_object = SharedObject {
         name: strtab.get(link_info.soname),
@@ -272,7 +273,7 @@ pub fn load<'a> (soname: &str, fd: &mut File, debug: bool) -> Result <SharedObje
         relatab: relatab,
         pltrelatab: pltrelatab,
         pltgot: pltgot as *const u64,
-        gnu_hash: GnuHash::new((link_info.gnu_hash + load_bias) as *const u32, symtab.len()),
+        gnu_hash: gnu_hash,
     };
 
     Ok (shared_object)
