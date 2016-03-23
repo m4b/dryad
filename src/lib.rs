@@ -1,7 +1,8 @@
 //#![feature(no_std, lang_items, asm, core, core_str_ext)]
 //#![no_std]
+#![crate_type="dylib"]
 #![feature(asm, libc)]
-#![no_main]
+//#![no_main]
 
 //#![feature(std_panic, recover)]
 
