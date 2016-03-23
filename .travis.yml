@@ -5,6 +5,6 @@ before_install:
 install: ./setup.sh
 script:
   - ./make.sh
-  - ./gen_tests.sh
-  - LD_DEBUG=1 test/test
-  - LD_DEBUG=none ./dryad.so.1
+#  - ./gen_tests.sh
+#  - LD_DEBUG=1 test/test
+#  - LD_DEBUG=none ./dryad.so.1
