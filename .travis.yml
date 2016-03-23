@@ -3,4 +3,8 @@ before_install:
   - sudo apt-get -qq update
   - sudo apt-get install -y libsnappy-dev
 install: ./setup.sh
-script: ./make.sh && ./dryad.so.1
+script:
+  - ./make.sh
+  - ./gen_tests.sh
+  - LD_DEBUG=1 test/test
+  - LD_DEBUG=none ./dryad.so.1

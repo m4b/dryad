@@ -50,8 +50,9 @@ impl<'a> Config<'a> {
         // http://flint.cs.yale.edu/cs422/doc/ELF_Format.pdf
         let bind_now = if let Some (var) = block.getenv("LD_BIND_NOW") {
             var != "" } else { false };
+        // inverting this for now
         let debug = if let Some (var) = block.getenv("LD_DEBUG") {
-            var != "" } else { false };
+            var != "0" && var != "none" } else { true };
         // TODO: FIX THIS IS NOT VALID and massively unsafe
         let secure = block.getauxval(auxv::AT_SECURE).unwrap() != 0;
         // TODO: add different levels of verbosity
