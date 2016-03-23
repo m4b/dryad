@@ -71,7 +71,7 @@ pub struct Dyn {
     pub d_val: u64, // Integer value
 }
 
-pub const SIZEOF_DYN:usize = 16;
+pub const SIZEOF_DYN: usize = 16;
 
 impl Dyn {
     unsafe fn debug_print(&self) {
