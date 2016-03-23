@@ -64,8 +64,6 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
 
     match Linker::new(linker_base, &block) {
         Ok (dryad) => {
-            println!("Dryad:\n  {:#?}", &dryad);
-
             if let Err(msg) = dryad.link(&block) {
                 println!("{}", msg);
                 _exit(1);

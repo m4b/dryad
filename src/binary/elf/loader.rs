@@ -112,8 +112,6 @@ fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u
 
         let load_bias = start - min_vaddr;
         let end = start + size as u64;
-        println!("Reserved {:#x} - {:#x}", start, (start + size as u64));
-
         Ok((start, load_bias, end))
     }
 }
@@ -151,7 +149,7 @@ fn pflags_to_prot (x:u32) -> isize {
 /// Loads an ELF binary from the given fd, mmaps its contents, and returns a SharedObject, whose lifetime is tied to the mmap's, i.e., manually managed
 /// TODO: refactor this code so as much as possible is independent of an `File` parameter
 /// TODO: probably just move this function to image and use it as the impl
-pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, String> {
+pub fn load<'a> (soname: &str, fd: &mut File, debug: bool) -> Result <SharedObject<'a>, String> {
     // 1. Suck up the elf header and construct the program headers
     let mut elf_header = [0; header::EHDR_SIZE];
     let _ = fd.read(&mut elf_header);
@@ -186,7 +184,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias, end) = try!(reserve_address_space(&phdrs));
-
+    if debug { println!("<loader> reserved {:#x} - {:#x}", start, end); }
     // semi-hack with adding the load bias right now, but probably fine
     let relatab = unsafe { rela::get(link_info.rela + load_bias, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize) };
 
@@ -220,7 +218,7 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
 
         // TODO: add error checking, if file size <= 0, if file_end greater than file_size, etc.
 
-        println!("PT_LOAD:\n\tseg_start: {:x} seg_end: {:x} seg_page_start: {:x} seg_page_end: {:x} seg_file_end: {:x}\n\tfile_start: {:x} file_end: {:x} file_page_start: {:x} file_length: {:x}", seg_start, seg_end, seg_page_start, seg_page_end, seg_file_end, file_start, file_end, file_page_start, file_length);
+        if debug { println!("<loader> PT_LOAD:\n\tseg_start: {:x} seg_end: {:x} seg_page_start: {:x} seg_page_end: {:x} seg_file_end: {:x}\n\tfile_start: {:x} file_end: {:x} file_page_start: {:x} file_length: {:x}", seg_start, seg_end, seg_page_start, seg_page_end, seg_file_end, file_start, file_end, file_page_start, file_length); }
 
         if file_length != 0 {
             let mmap_flags = mmap::MAP_FIXED | mmap::MAP_PRIVATE;
@@ -258,8 +256,6 @@ pub fn load<'a> (soname: &str, fd: &mut File) -> Result <SharedObject<'a>, Strin
     */
     //TODO: make this an optional
     let pltgot = if link_info.pltgot == 0 { 0 } else { link_info.pltgot + load_bias }; // musl doesn't have a PLTGOT, for example
-
-    println!("Done");
 
     let shared_object = SharedObject {
         name: strtab.get(link_info.soname),

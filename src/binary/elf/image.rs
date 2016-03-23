@@ -283,7 +283,7 @@ impl<'process> SharedObject<'process> {
     }
 }
 
-/*
+
 unsafe impl<'a> Send for SharedObject<'a> {}
 unsafe impl<'a> Sync for SharedObject<'a> {}
-*/
+/**/

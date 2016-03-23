@@ -14,7 +14,7 @@ use std::fs::File;
 use std::path::Path;
 
 //use scoped_thread::Pool;
-//use std::thread;
+use std::thread;
 //use std::sync::{Arc, Mutex};
 
 use binary::elf::header::Header;
@@ -311,12 +311,12 @@ impl<'process> Linker<'process> {
     fn prepare_got<'a> (&self, idx: usize, pltgot: *const u64, name: &'a str) {
 
         if pltgot.is_null() {
-            println!("<dryad> empty pltgot for {}", name);
+            if self.config.debug { println!("<dryad> empty pltgot for {}", name); }
             return
         }
 
         let len = self.link_map.len();
-        let rndzv = Box::new(runtime::Rendezvous { idx: idx, link_map: self.link_map.as_slice() });
+        let rndzv = Box::new(runtime::Rendezvous { idx: idx, debug: self.config.debug, link_map: self.link_map.as_slice() });
 
         unsafe {
             // got[0] == the program's address of the _DYNAMIC array, equal to address of the PT_DYNAMIC.ph_vaddr + load_bias
@@ -327,7 +327,7 @@ impl<'process> Linker<'process> {
 
             *second_entry = Box::into_raw(rndzv);
             *third_entry = runtime::_dryad_resolve_symbol as usize;
-            println!("<dryad> finished got setup for {} GOT[1] = {:?} GOT[2] = {:#x}", name, *second_entry, *third_entry);
+            if self.config.debug { println!("<dryad> finished got setup for {} GOT[1] = {:?} GOT[2] = {:#x}", name, *second_entry, *third_entry); }
         }
 
     }
@@ -345,7 +345,7 @@ impl<'process> Linker<'process> {
             let name = &strtab[symbol.st_name as usize];
             let reloc = (rela.r_offset + bias) as *mut u64;
             // TODO: remove this print, misleading on anything other than RELATIVE relocs
-//            println!("relocating {} {}({:?}) with addend {:x} to {:x}", name, (rela::type_to_str(typ)), reloc, rela.r_addend, (rela.r_addend + bias as i64));
+//            if self.config.debug { println!("relocating {} {}({:?}) with addend {:x} to {:x}", name, (rela::type_to_str(typ)), reloc, rela.r_addend, (rela.r_addend + bias as i64)); }
             match typ {
                 // B + A
                 rela::R_X86_64_RELATIVE | rela::R_X86_64_TPOFF64 => {
@@ -382,7 +382,7 @@ impl<'process> Linker<'process> {
             }
         }
 
-        println!("<dryad> relocated {} symbols in {}", count, &object.name);
+        if self.config.debug { println!("<dryad> relocated {} symbols in {}", count, &object.name); }
 
         self.prepare_got(idx, object.pltgot, &object.name);
     }
@@ -408,21 +408,21 @@ impl<'process> Linker<'process> {
             match typ {
                 rela::R_X86_64_JUMP_SLOT if self.config.bind_now => {
                     if let Some(symbol_address) = self.find_symbol(name) {
-//                        println!("resolving {} to {:#x}", name, symbol_address);
+//                        if self.config.debug { println!("resolving {} to {:#x}", name, symbol_address); }
                         unsafe { *reloc = symbol_address; }
                         count += 1;
                     } else {
-                        println!("<dryad> Warning, no resolution for {}", name);
+                        if self.config.debug { println!("<dryad> Warning, no resolution for {}", name); }
                     }
                 },
                 // fun @ (B + A)()
                 rela::R_X86_64_IRELATIVE => {
                     let addr = rela.r_addend + bias as i64;
-//                    println!("<dryad> irelative: bias: {:#x} addend: {:#x} addr: {:#x}", bias, rela.r_addend, addr);
+//                    if self.config.debug { println!("<dryad> irelative: bias: {:#x} addend: {:#x} addr: {:#x}", bias, rela.r_addend, addr); }
                     unsafe {
                         let ifunc = mem::transmute::<usize, (fn() -> usize)>(addr as usize);
                         *reloc = ifunc() as u64;
-//                        println!("<dryad> ifunc addr: 0x{:x}", *reloc);
+//                        if self.config.debug { println!("<dryad> ifunc addr: 0x{:x}", *reloc); }
                     }
                     count += 1;
                 },
@@ -430,7 +430,7 @@ impl<'process> Linker<'process> {
                 _ => ()
             }
         }
-        println!("<dryad> relocate plt: {} symbols for {}", count, so.name);
+        if self.config.debug { println!("<dryad> relocate plt: {} symbols for {}", count, so.name); }
     }
 
     /// TODO: rename to something like `load_all` to signify on return everything has loaded?
@@ -455,8 +455,8 @@ impl<'process> Linker<'process> {
                 match File::open(Path::new(&path).join(soname)) {
                     Ok (mut fd) => {
                         found = true;
-                        println!("Opened: {:?}", fd);
-                        let shared_object = try!(loader::load(soname, &mut fd));
+                        if self.config.debug { println!("<dryad> opened: {:?}", fd); }
+                        let shared_object = try!(loader::load(soname, &mut fd, self.config.debug));
                         let libs = &shared_object.libs.to_owned(); // TODO: fix this unnecessary allocation, but we _must_ insert before iterating
                         self.working_set.insert(soname.to_string(), shared_object);
 
@@ -494,6 +494,7 @@ impl<'process> Linker<'process> {
     #[no_mangle]
     pub fn link(mut self, block: &kernel_block::KernelBlock) -> Result<(), String> {
 
+        //if self.config.debug { println!("Dryad:\n  {:#?}", &self); }
 
         // Fun Fact: uncomment this for ridiculous disaster: runs fine when links itself, but not when it links an executable, because hell
         /*
@@ -502,8 +503,7 @@ impl<'process> Linker<'process> {
         for k in v {
 
             let t = thread::spawn(move || {
-                println!("{} init", k);
-                println!("{} done", k);
+                 println!("{} init", k);
             });
             
             guards.push(t);
@@ -512,15 +512,15 @@ impl<'process> Linker<'process> {
         for g in guards {
             let _ = g.join().unwrap();
         }
-        */
+                */
 
         // build executable
-        println!("BEGIN EXE LINKING");
+        if self.config.debug { println!("BEGIN EXE LINKING"); }
         let name = utils::as_str(block.argv[0]);
         let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
         let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
         let image = try!(SharedObject::from_executable(name, phdr_addr, phnum as usize));
-        println!("Main Image:\n  {:#?}", &image);
+        if self.config.debug { println!("Main Image:\n  {:#?}", &image); }
 
         // 1. load all
 
@@ -532,7 +532,7 @@ impl<'process> Linker<'process> {
             try!(self.load(lib));
         }
 
-        println!("<dryad> link_map_order: {:#?}", self.link_map_order);
+        if self.config.debug { println!("<dryad> link_map_order: {:#?}", self.link_map_order); }
 
         self.link_map.reserve_exact(self.link_map_order.len()+1);
         self.link_map.push(image);
@@ -540,8 +540,8 @@ impl<'process> Linker<'process> {
             let so = self.working_set.remove(soname).unwrap();
             self.link_map.push(so);
         }
-        println!("<dryad> working set is drained: {}", self.working_set.len() == 0);
-        println!("<dryad> link_map ptr: {:#?}, cap = len: {}", self.link_map.as_ptr(), self.link_map.capacity() == self.link_map.len());
+        if self.config.debug { println!("<dryad> working set is drained: {}", self.working_set.len() == 0); }
+        if self.config.debug { println!("<dryad> link_map ptr: {:#?}, cap = len: {}", self.link_map.as_ptr(), self.link_map.capacity() == self.link_map.len()); }
         // <join>
         // 2. relocate all
         // TODO: after _all_ SharedObject have been loaded, it is safe to relocate if we stick to ELF symbol search rule of first search executable, then in each of DT_NEEDED in order, then deps of first DT_NEEDED, and if not found, then deps of second DT_NEEDED, etc., i.e., breadth-first search.  Why this is allowed to continue past the executable's _OWN_ dependency list is anyone's guess; a penchant for chaos perhaps?
