@@ -102,9 +102,11 @@ The primary goal of this project is to completely document:
 
 The current state of documentation and information on this subject is an *embarassment*, and I'm continually appalled at the lack of materials, documentation, etc.  I've jokingly told people I'm worried what will happen when all the old C programmers die - but I'm not really joking.
 
-Code is not documentation, 
+Code is not documentation.  If it were, then this project would have been easy and finished some time ago.
 
-I will be updating this section shortly, please bear with me.
+As such, I hope to thoroughly document the implementation, the process, and maybe even my experiences.
+
+**I will be updating this section with more content shortly, please bear with me.**
 
 # Contributing
 
