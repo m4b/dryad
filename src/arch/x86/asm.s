@@ -7,6 +7,7 @@ _dryad_fini:
 
 	// TODO: fix in lib.rs: _start needs to get a stack and argc that looks like it was executed directly, i believe this might be the final cause of the segfault in dynamic linking, because certain arguments in the stack are too high?
 
+	// this causes segfaults very early on, can't use Mutabah's fix for now...
 .section .data
 _addr_of_dryad_init: .quad dryad_init
 _addr_of_dryad_resolve_symbol: .quad dryad_resolve_symbol
@@ -21,8 +22,9 @@ _start:
 	mov %rsp, %rdi
 //	mov %rsp, %rbp ; we shouldn't need to save rbp
 	andq $~15, %rsp
-	mov _addr_of_dryad_init(%rip), %rax
-        callq *%rax
+//	mov _addr_of_dryad_init(%rip), %rax
+//        callq *%rax
+	callq dryad_init
 	/* // need to add dryad's fini call into rdx... because that's where crt1.o's _start expects it to be
 	mov %rax, %rcx
 	callq _dryad_fini
@@ -66,8 +68,9 @@ _dryad_resolve_symbol:
 //	bndmov %bnd3,0x130(%rsp)
 	mov    0x10(%rbx),%rsi
 	mov    0x8(%rbx),%rdi
-	mov _addr_of_dryad_resolve_symbol(%rip), %rax
-	callq  *(%rax)
+//	mov _addr_of_dryad_resolve_symbol(%rip), %rax
+//	callq  *(%rax)
+	callq dryad_resolve_symbol
 	mov    %rax,%r11
 //	bndmov 0x130(%rsp),%bnd3
 //	bndmov 0x120(%rsp),%bnd2
