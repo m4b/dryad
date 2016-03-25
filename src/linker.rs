@@ -50,10 +50,12 @@ impl<'a> Config<'a> {
         // http://flint.cs.yale.edu/cs422/doc/ELF_Format.pdf
         let bind_now = if let Some (var) = block.getenv("LD_BIND_NOW") {
             var != "" } else { false };
-        // inverting this for now
         let debug = if let Some (var) = block.getenv("LD_DEBUG") {
-            var != "0" && var != "none" } else { true };
-        // TODO: FIX THIS IS NOT VALID and massively unsafe
+            var != "" } else { false };
+        // because travis is a PoS
+        let debug = if let Some (var) = block.getenv("LD_DRYAD_DEBUG") {
+            var != "none" && var != "0" } else { true };
+         // TODO: FIX THIS IS NOT VALID and massively unsafe
         let secure = block.getauxval(auxv::AT_SECURE).unwrap() != 0;
         // TODO: add different levels of verbosity
         let verbose = if let Some (var) = block.getenv("LD_VERBOSE") {
