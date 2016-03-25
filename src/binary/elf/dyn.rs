@@ -65,7 +65,6 @@ pub const DT_FLAGS_1: u64 = 0x6ffffffb;
 
 /// An entry in the dynamic array
 #[repr(C)]
-#[derive(Clone)]
 pub struct Dyn {
     pub d_tag: u64, // Dynamic entry type
     pub d_val: u64, // Integer value
@@ -171,7 +170,7 @@ pub unsafe fn get_dynamic_array<'a>(bias: u64, phdrs: &'a [ProgramHeader]) -> Op
         if phdr.p_type == PT_DYNAMIC {
             let dynp = (phdr.p_vaddr + bias) as *const Dyn;
             let mut idx = 0;
-            while (*(dynp.offset(idx))).d_tag != DT_NULL {
+            while (*dynp.offset(idx)).d_tag != DT_NULL {
                 idx += 1;
             }
             return Some(slice::from_raw_parts(dynp, idx as usize))
@@ -179,6 +178,21 @@ pub unsafe fn get_dynamic_array<'a>(bias: u64, phdrs: &'a [ProgramHeader]) -> Op
     }
     None
 }
+
+pub unsafe fn get_dynamic_array_offset_hack<'a>(bias: u64, phdrs: &'a [ProgramHeader]) -> Option<&'a [Dyn]> {
+    for phdr in phdrs {
+        if phdr.p_type == PT_DYNAMIC {
+            let dynp = (phdr.p_offset + bias) as *const Dyn;
+            let mut idx = 0;
+            while (*dynp.offset(idx)).d_tag != DT_NULL {
+                idx += 1;
+            }
+            return Some(slice::from_raw_parts(dynp, idx as usize))
+        }
+    }
+    None
+}
+
 
 /// Gets the needed libraries from the `_DYNAMIC` array, with the str slices lifetime tied to the dynamic arrays lifetime
 pub fn get_needed<'a, 'b>(dyns: &'a [Dyn], strtab: &'b Strtab<'a>, count: usize) -> Vec<&'a str> {

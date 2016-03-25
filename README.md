@@ -1,6 +1,6 @@
 # Welcome
 
-[![Build Status](https://travis-ci.org/m4b/dryad.svg?branch=master)](https://travis-ci.org/m4b/dryad) [![Floobits Status](https://floobits.com/m4b/dryad.svg)](https://floobits.com/m4b/dryad/redirect)
+[![Build Status](https://travis-ci.org/m4b/dryad.svg?branch=master)](https://travis-ci.org/m4b/dryad) [![Floobits Status](https://floobits.com/m4b/dryad.svg)](https://floobits.com/m4b/dryad/redirect) https://gitter.im/m4b/dryad
 
 ![dryad](doc/dryad.jpg)
 
@@ -92,6 +92,17 @@ This is easily the least documented part of the entire dynamic linking process I
 Lastly, `dryad` _should_ be capable of interpreting itself, which you can verify by invoking `./dryad.so.1` (yes, dryad is it's own program interpreter).
 
 # Project Goals
+
+### 1. Documenting a Dynamic Linker
+
+The primary goal of this project is to completely document:
+
+1. the dynamic linking _process_ on an GNU/Linux ELF x86-64 system
+2. an implementation of such a process
+
+The current state of documentation and information on this subject is an *embarassment*, and I'm continually appalled at the lack of materials, documentation, etc.  I've jokingly told people I'm worried what will happen when all the old C programmers die - but I'm not really joking.
+
+Code is not documentation, 
 
 I will be updating this section shortly, please bear with me.
 

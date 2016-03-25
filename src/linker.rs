@@ -229,8 +229,10 @@ impl<'process> Linker<'process> {
                  */
 
                 // we relocated ourselves so it should be safe to use global data and allocate
+                let config = Config::new(&block);
                 let mut working_set = Box::new(HashMap::new());
                 let vdso = SharedObject::from_raw(vdso_addr);
+                if config.debug { println!("<dryad> vdso: {:#?}", vdso); }
                 let mut link_map_order = Vec::new();
                 let link_map = Vec::new();
                 link_map_order.push(vdso.name.to_string());
@@ -242,7 +244,7 @@ impl<'process> Linker<'process> {
                     ehdr: &ehdr,
                     phdrs: &phdrs,
                     dynamic: &dynamic,
-                    config: Config::new(&block),
+                    config: config,
                     working_set: working_set,
                     link_map_order: link_map_order,
                     link_map: link_map,
@@ -586,7 +588,7 @@ impl<'process> Linker<'process> {
         // so the structures we setup don't segfault when we try to access them back again after passing through assembly to `dryad_resolve_symbol`,
         // which from the compiler's perspective means they needs to be dropped
         // "Blessed are the forgetful, for they get the better even of their blunders."
-        // "Without forgetting it is quite impossible to live at all."
+        println!("<dryad> \"Without forgetting it is quite impossible to live at all.\"");
         mem::forget(self);
         Ok (())
     }
