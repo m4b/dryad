@@ -4,6 +4,12 @@
 
 ![dryad](doc/dryad.jpg)
 
+**NOTE**
+
+> Massive apologies, since it was better to do this sooner than later, I've performed an upstream rebase to remove the erroneously added musldist files which were unfortunately added early on in the development process, and made their way into the upstream repo.
+>
+> The project should now be approximately 350K instead of the ridiculous 78MB.  Again, apologies for this, but it was better to get this pain over with sooner rather than later.
+
 `dryad` is the **first** and **only** _parallel_, 64-bit ELF dynamic linker for GNU/Linux, written from scratch in Rust, and is:
 
 0. not parallel
