@@ -13,6 +13,39 @@ use binary::elf::rela;
 use binary::elf::rela::Rela;
 use binary::elf::gnu_hash::GnuHash;
 
+#[inline(always)]
+/// Computes the "load bias", which is normally the base.  However, in older Linux kernel's, 3.13, and whatever runs on travis, I have discovered that the kernel incorrectly maps the vdso with "bad" values.
+///
+/// Specifically, I'm seeing the `p_vaddr` value and `d_val` in the dynamic array showing up with overflow biased values, e.g.:
+/// ```
+/// p/x phdr.p_vaddr
+/// $1 = 0xffffffffff700000
+/// (gdb) p/x bias
+/// $2 = 0x00007fff873f1000
+/// ```
+/// In newer kernels the `phdr.p_vaddr` (correctly) reports `0x468` (it's a `ET_DYN` after all), which is then safely added to the original bias/load address to recover the desired address in memory, in this case: 0x7ffff7ff7468.
+/// Unfortunately, life is not so easy in 3.13, as we're told the `p_vaddr` (and the `d_val` in the dynamic entry entries) is a crazy value like above.  Luckily, after looking at what several dynamic linkers do, I noticed that they all seem to implement a version of the following, in that we can recover the correct address by relying on insane overflow arithmetic _regardless_ of whether we received this crazy address, or a normal address:
+/// ```
+/// load_bias = base - p_vaddr + p_offset
+/// ```
+/// In the 3.13 case:
+/// ```
+///    let load_bias = 0x7fff873f1000u64.wrapping_sub(0xffffffffff700000u64.wrapping_add(0));
+///    println!("load_bias: 0x{:x}", load_bias);
+///    let dynamic = load_bias.wrapping_add(0xffffffffff700468);
+///    println!("dynamic: 0x{:x}", dynamic);
+/// ```
+/// On my machine with `4.4.5-1-ARCH`, the computed load bias will equal itself, and subsequent additions of sane `p_vaddr` values will work as expected.
+/// As for why the above is the case on older kernels (or perhaps VMs only, I haven't tested extensively), I have no idea.
+pub unsafe fn compute_load_bias_wrapping(base: u64, phdrs:&[ProgramHeader]) -> usize {
+    for phdr in phdrs {
+        if phdr.p_type == program_header::PT_LOAD {
+            return base.wrapping_sub(phdr.p_vaddr.wrapping_add(phdr.p_offset)) as usize;
+        }
+    }
+    0
+}
+
 /// Important dynamic LinkInfo generated via a single pass through the _DYNAMIC array
 pub struct LinkInfo {
     pub rela: u64,
@@ -75,28 +108,28 @@ impl LinkInfo {
         let mut soname = 0;
         for dyn in dynamic {
             match dyn.d_tag {
-                dyn::DT_RELA => rela = dyn.d_val + bias, // .rela.dyn
+                dyn::DT_RELA => rela = dyn.d_val.wrapping_add(bias), // .rela.dyn
                 dyn::DT_RELASZ => relasz = dyn.d_val,
                 dyn::DT_RELAENT => relaent = dyn.d_val,
                 dyn::DT_RELACOUNT => relacount = dyn.d_val,
-                dyn::DT_GNU_HASH => gnu_hash = dyn.d_val + bias,
-                dyn::DT_HASH => hash = dyn.d_val + bias,
-                dyn::DT_STRTAB => strtab = dyn.d_val + bias,
+                dyn::DT_GNU_HASH => gnu_hash = dyn.d_val.wrapping_add(bias),
+                dyn::DT_HASH => hash = dyn.d_val.wrapping_add(bias),
+                dyn::DT_STRTAB => strtab = dyn.d_val.wrapping_add(bias),
                 dyn::DT_STRSZ => strsz = dyn.d_val as usize,
-                dyn::DT_SYMTAB => symtab = dyn.d_val + bias,
+                dyn::DT_SYMTAB => symtab = dyn.d_val.wrapping_add(bias),
                 dyn::DT_SYMENT => syment = dyn.d_val,
-                dyn::DT_PLTGOT => pltgot = dyn.d_val + bias,
+                dyn::DT_PLTGOT => pltgot = dyn.d_val.wrapping_add(bias),
                 dyn::DT_PLTRELSZ => pltrelsz = dyn.d_val,
                 dyn::DT_PLTREL => pltrel = dyn.d_val,
-                dyn::DT_JMPREL => jmprel = dyn.d_val + bias, // .rela.plt
-                dyn::DT_VERNEED => verneed = dyn.d_val + bias,
+                dyn::DT_JMPREL => jmprel = dyn.d_val.wrapping_add(bias), // .rela.plt
+                dyn::DT_VERNEED => verneed = dyn.d_val.wrapping_add(bias),
                 dyn::DT_VERNEEDNUM => verneednum = dyn.d_val,
-                dyn::DT_VERSYM => versym = dyn.d_val + bias,
-                dyn::DT_INIT => init = dyn.d_val + bias,
-                dyn::DT_FINI => fini = dyn.d_val + bias,
-                dyn::DT_INIT_ARRAY => init_array = dyn.d_val + bias,
+                dyn::DT_VERSYM => versym = dyn.d_val.wrapping_add(bias),
+                dyn::DT_INIT => init = dyn.d_val.wrapping_add(bias),
+                dyn::DT_FINI => fini = dyn.d_val.wrapping_add(bias),
+                dyn::DT_INIT_ARRAY => init_array = dyn.d_val.wrapping_add(bias),
                 dyn::DT_INIT_ARRAYSZ => init_arraysz = dyn.d_val,
-                dyn::DT_FINI_ARRAY => fini_array = dyn.d_val + bias,
+                dyn::DT_FINI_ARRAY => fini_array = dyn.d_val.wrapping_add(bias),
                 dyn::DT_FINI_ARRAYSZ => fini_arraysz = dyn.d_val,
                 dyn::DT_NEEDED => needed_count += 1,
                 dyn::DT_FLAGS => flags = dyn.d_val,
@@ -195,11 +228,11 @@ impl<'process> fmt::Debug for SharedObject<'process> {
 impl<'process> SharedObject<'process> {
 
     /// Assumes the object referenced by the ptr has already been mmap'd or loaded into memory some way
-    /// TODO: fix the libs hack
     pub unsafe fn from_raw (ptr: u64) -> SharedObject<'process> {
         let header = &*(ptr as *const Header);
         let phdrs = ProgramHeader::from_raw_parts((header.e_phoff + ptr) as *const ProgramHeader, header.e_phnum as usize);
-        let dynamic = dyn::get_dynamic_array(ptr as u64, phdrs).unwrap();
+        let load_bias = compute_load_bias_wrapping(ptr, &phdrs);
+        let dynamic = dyn::get_dynamic_array(load_bias as u64, phdrs).unwrap();
         let link_info = LinkInfo::new(&dynamic, ptr);
         let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM as u64;
         let symtab = sym::get_symtab(link_info.symtab as *const sym::Sym, num_syms as usize);

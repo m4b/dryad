@@ -24,6 +24,7 @@ use binary::elf::dyn;
 use binary::elf::rela;
 use binary::elf::loader;
 use binary::elf::image::SharedObject;
+use binary::elf::image;
 use binary::elf::gnu_hash;
 
 use utils;
@@ -99,17 +100,6 @@ impl<'a> fmt::Debug for Config<'a> {
                self.preload
                )
     }
-}
-
-// TODO: this is not inlined with -g
-#[inline]
-fn compute_load_bias(base:u64, phdrs:&[ProgramHeader]) -> u64 {
-    for phdr in phdrs {
-        if phdr.p_type == program_header::PT_LOAD {
-            return base + (phdr.p_offset - phdr.p_vaddr);
-        }
-    }
-    0
 }
 
 /*
@@ -210,7 +200,7 @@ impl<'process> Linker<'process> {
             let ehdr = &*(base as *const Header);
             let addr = (base + ehdr.e_phoff) as *const program_header::ProgramHeader;
             let phdrs = ProgramHeader::from_raw_parts(addr, ehdr.e_phnum as usize);
-            let load_bias = compute_load_bias(base, &phdrs);
+            let load_bias = image::compute_load_bias_wrapping(base, &phdrs) as u64;
             let vdso_addr = block.getauxval(auxv::AT_SYSINFO_EHDR).unwrap();
             if let Some(dynamic) = dyn::get_dynamic_array(load_bias, &phdrs) {
 

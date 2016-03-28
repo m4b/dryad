@@ -163,12 +163,12 @@ pub fn from_fd<'a>(mut fd: &File, phdrs: &'a [ProgramHeader]) -> Option<Vec<Dyn>
     None
 }
 
-/// Maybe gets and returns the dynamic array with the same lifetime as the [phdrs], using the provided bias.
+/// Maybe gets and returns the dynamic array with the same lifetime as the [phdrs], using the provided bias with wrapping addition.
 /// If the bias is wrong, it will either segfault or give you incorrect values, beware
 pub unsafe fn get_dynamic_array<'a>(bias: u64, phdrs: &'a [ProgramHeader]) -> Option<&'a [Dyn]> {
     for phdr in phdrs {
         if phdr.p_type == PT_DYNAMIC {
-            let dynp = (phdr.p_vaddr + bias) as *const Dyn;
+            let dynp = phdr.p_vaddr.wrapping_add(bias) as *const Dyn;
             let mut idx = 0;
             while (*dynp.offset(idx)).d_tag != DT_NULL {
                 idx += 1;

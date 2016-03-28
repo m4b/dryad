@@ -114,6 +114,24 @@ As such, I hope to thoroughly document the implementation, the process, and mayb
 
 **I will be updating this section with more content shortly, please bear with me.**
 
+### 2. Implementing a Dynamic Linker
+
+The current target implementation for dryad is an ELF x86-64 GNU/Linux system.
+
+This is important to note:
+
+1. The ELF loader only supports the 64-bit variant
+2. The asm assumes an x86-64 instruction set
+3. The linker currently targets Linux, although this need not be set in stone.
+
+I would like to have a working implementation for an ELF x86-64 GNU/Linux target before/if beginning work on other architectures or systems.
+
+That being said, in particular I'm not very interested in porting dryad to work on 32-bit Linux systems, because:
+
+1. 32-bit systems are in obsolescence in my opinion
+2. Will _significantly_ complicate the ELF target in the source code, as cfg flags would be needed depending on what target we want to switch at build time, etc.
+3. 32-bit ELF dynamic linking is much better documented, and I want to document a 64-bit dynamic linker
+
 # Contributing
 
 Contributions wholeheartedly welcome!  Let's build a production dynamic linker in Rust for use in x86-64 GNU/Linux systems (and beyond)!  Or not, that's cool too.
