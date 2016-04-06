@@ -509,6 +509,8 @@ impl<'process> Linker<'process> {
         }
                 */
 
+        println!("libc: {:#?}", unsafe {&::tls::__libc});
+
         // build executable
         if self.config.debug { println!("BEGIN EXE LINKING"); }
         let name = utils::as_str(block.argv[0]);
