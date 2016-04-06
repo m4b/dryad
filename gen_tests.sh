@@ -24,9 +24,10 @@ echo -e "Building a binary $TESTDIR/float with libm that performs no printing"
 gcc -Wl,-I,$DRYAD $TESTDIR/float.c -o $TESTDIR/float -lm
 gcc $TESTDIR/float.c -o $TESTDIR/ldfloat -lm
 
-echo -e "Building a binary $TESTDIR/getaux which calls getauxval(AT_ENTRY), and will segfault if the proper global struct isn't setup depending on which libc we are"
-gcc -Wl,-I,$DRYAD $TESTDIR/getaux.c -o $TESTDIR/getaux
-gcc $TESTDIR/getaux.c -o $TESTDIR/ldgetaux
+# travis doesn't have sys/auxv.h ffs
+#echo -e "Building a binary $TESTDIR/getaux which calls getauxval(AT_ENTRY), and will segfault if the proper global struct isn't setup depending on which libc we are"
+#gcc -Wl,-I,$DRYAD $TESTDIR/getaux.c -o $TESTDIR/getaux
+#gcc $TESTDIR/getaux.c -o $TESTDIR/ldgetaux
 
 # uncomment this and use $LIB with a `libc.so` to create a musl binary to test with
 #echo -e "Building musl linked binary $TESTDIR/musl"
