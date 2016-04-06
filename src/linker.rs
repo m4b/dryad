@@ -175,6 +175,7 @@ pub struct Linker<'process> {
     pub ehdr: &'process Header,
     pub phdrs: &'process [program_header::ProgramHeader],
     pub dynamic: &'process [dyn::Dyn],
+    auxv: Vec<u64>,
     config: Config<'process>,
     working_set: Box<HashMap<String, SharedObject<'process>>>, // TODO: we can eventually drop this or have it stack local var instead of field
     link_map_order: Vec<String>,
@@ -211,11 +212,8 @@ impl<'process> Linker<'process> {
                 let relocations = get_linker_relocations(load_bias, &dynamic);
                 relocate_linker(load_bias, &relocations);
                 // dryad has successfully relocated itself; time to init tls
-                let auxv = block.get_aux();
-//                auxv[auxv::AT_PHDR as usize] = addr as u64;
-//                auxv[auxv::AT_BASE as usize] = base as u64;
+                let auxv = auxv::from_raw(block.auxv);
                 __init_tls(auxv.as_ptr()); // this _should_ be safe since vec only allocates and shouldn't access tls. maybe.
-
                 /* need something like this or write custom tls initializer
 	        if (__init_tp(__copy_tls((void *)builtin_tls)) < 0) {
 		a_crash();
@@ -231,7 +229,6 @@ impl<'process> Linker<'process> {
                 let link_map = Vec::new();
                 link_map_order.push(vdso.name.to_string());
                 working_set.insert(vdso.name.to_string(), vdso);
-//                link_map.push(vdso);
                 Ok (Linker {
                     base: base,
                     load_bias: load_bias,
@@ -242,6 +239,7 @@ impl<'process> Linker<'process> {
                     working_set: working_set,
                     link_map_order: link_map_order,
                     link_map: link_map,
+                    auxv: auxv,
                 })
 
             } else {
@@ -584,7 +582,10 @@ impl<'process> Linker<'process> {
         // so the structures we setup don't segfault when we try to access them back again after passing through assembly to `dryad_resolve_symbol`,
         // which from the compiler's perspective means they needs to be dropped
         // "Blessed are the forgetful, for they get the better even of their blunders."
-        println!("<dryad> \"Without forgetting it is quite impossible to live at all.\"");
+        if self.config.debug { println!("<dryad> \"Without forgetting it is quite impossible to live at all.\""); }
+        if !self.config.secure && self.config.show_auxv {
+            auxv::show(&self.auxv);
+        }
         mem::forget(self);
         Ok (())
     }

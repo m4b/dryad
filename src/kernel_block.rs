@@ -3,14 +3,12 @@ use utils::*;
 
 use std::slice;
 
-const AUX_CNT:usize = 38;
-
 pub struct KernelBlock<'a>{
     pub argc: isize,
     pub argv: &'a[*const u8],
     pub envc: isize,
     pub env: &'a[*const u8],
-    pub auxv: *mut auxv::Elf64_auxv_t,
+    pub auxv: *const auxv::Auxv,
 }
 
 impl<'b> KernelBlock<'b> {
@@ -58,7 +56,7 @@ impl<'b> KernelBlock<'b> {
                 envc += 1;
             }
             p = p.offset(1);
-            let auxv = p as *mut auxv::Elf64_auxv_t;
+            let auxv = p as *const auxv::Auxv;
             KernelBlock {
                 argc: argc,
                 argv: slice::from_raw_parts(argv, argc as usize),
@@ -67,21 +65,6 @@ impl<'b> KernelBlock<'b> {
                 auxv: auxv,
             }
         }
-    }
-
-    // consider using inout stack-allocated &[u64] slice?
-    pub fn get_aux (&self) -> Vec<u64> {
-        let mut aux:Vec<u64> = vec![0; AUX_CNT];
-        let mut i:isize = 0;
-        unsafe {
-            while (&*self.auxv.offset(i)).a_val != auxv::AT_NULL {
-                let auxv_t = &*self.auxv.offset(i);
-                // musl wants the aux a_val array to be indexed by AT_<TYPE>
-                aux[auxv_t.a_type as usize] = auxv_t.a_val;
-                i += 1;
-            }
-        }
-        aux
     }
 
     pub unsafe fn unsafe_print (&self) -> () {
