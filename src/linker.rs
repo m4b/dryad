@@ -36,6 +36,7 @@ use runtime;
 
 /// The internal config the dynamic linker generates from the environment variables it receives.
 struct Config<'a> {
+    show_auxv: bool,
     bind_now: bool,
     debug: bool,
     secure: bool,
@@ -49,6 +50,8 @@ impl<'a> Config<'a> {
     pub fn new<'b> (block: &'b kernel_block::KernelBlock) -> Config<'b> {
         // Must be non-null or not in environment to be "false".  See ELF spec, page 42:
         // http://flint.cs.yale.edu/cs422/doc/ELF_Format.pdf
+        let show_auxv = if let Some (var) = block.getenv("LD_SHOW_AUXV") {
+            var != "" } else { false };
         let bind_now = if let Some (var) = block.getenv("LD_BIND_NOW") {
             var != "" } else { false };
         let debug = if let Some (var) = block.getenv("LD_DEBUG") {
@@ -76,6 +79,7 @@ impl<'a> Config<'a> {
                 vec!["/usr/lib"]
             };
         Config {
+            show_auxv: show_auxv,
             bind_now: bind_now,
             debug: debug,
             secure: secure,
