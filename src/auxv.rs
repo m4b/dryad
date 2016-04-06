@@ -54,8 +54,8 @@ pub unsafe fn from_raw (auxv: *const Auxv) -> Vec<u64> {
 }
 
 #[inline(always)]
-fn str_of_at (at: u64) -> &'static str {
-    match at {
+fn str_of_idx (idx: u64) -> &'static str {
+    match idx {
         AT_NULL => "AT_NULL",
         AT_IGNORE => "AT_IGNORE",
         AT_EXECFD => "AT_EXECFD",
@@ -97,7 +97,7 @@ fn str_of_at (at: u64) -> &'static str {
 pub fn show (auxvs: &Vec<u64>) {
     for (i, auxv) in auxvs.iter().enumerate() {
         if *auxv != 0 {
-            println!("{}: 0x{:x}", str_of_at(i as u64), auxv)
+            println!("{}: 0x{:x}", str_of_idx(i as u64), auxv)
         }
     }
 }
