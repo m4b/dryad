@@ -60,8 +60,10 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
         // (https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
         // line 786:
         // > Ho ho.  We are not the program interpreter!  We are the program itself!
-        println!("libc: {:#?}", unsafe { &__libc});
-        println!("-=|dryad====-\nHo ho.  We are not the program interpreter!  We are the program itself!"); // TODO: add box drawing random character gen here cause it'll be _cute_
+        println!("-=|dryad====-");
+        println!("Ho ho.  We are not the program interpreter!  We are the program itself!");
+        // does not have values
+        println!("after jmp libc: {:#?}", unsafe { &tls::__libc});
         _exit(0);
         return 0xd47ad // to make compiler happy
     }
@@ -73,6 +75,8 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
                 _exit(1);
                 0xd47ad
             } else {
+                // has values here
+                println!("before jmp libc: {:#?}", unsafe { &tls::__libc});
                 entry
             }
         },
