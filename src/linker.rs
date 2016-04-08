@@ -575,6 +575,7 @@ impl<'process> Linker<'process> {
             self.relocate_plt(so);
         }
 
+        println!("libc: {:#?}", unsafe { &tls::__libc});
         // <join>
         // 3. transfer control
 
