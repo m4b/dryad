@@ -24,7 +24,6 @@ pub mod linker;
 use kernel_block::KernelBlock;
 use linker::Linker;
 use utils::*;
-use tls::*;
 
 extern crate libc;
 
