@@ -42,7 +42,7 @@ Just run `./setup.sh`, which will download and install the latest rust nightly i
 You can then proceed as normal:
 
 1. `./gen_tests.sh` - builds the test binaries (do this once)
-2. `./make.sh` - compiles `dryad.so.1` and copies it to `/tmp`
+2. `make` - compiles `dryad.so.1` and copies it to `/tmp`
 3. `test/test` - runs the test binary `test`, whose `PT_INTERPRETER` is `/tmp/dryad.so.1`
 
 ## Setup - Use Nightly Rust, slightly less easier
@@ -55,20 +55,20 @@ chmod +x rustup.sh
 sudo ./rustup.sh --channel=nightly --with-target=x86_64-unknown-linux-musl
 ```
 
-And then edit `make.sh` script to use `/usr/local` as the `$PREFIX` instead of `rust`.
+And then edit the `Makefile` to use `/usr/local` as the `$PREFIX` instead of `rust`.
 
 You can then compile and run as normal.
 
-## Why `make.sh` (and not `cargo`)
+## Why `make` (and not `cargo`)
 
-The last script, `make.sh`, does four things:
+The `Makefile` does four things:
 
 1. compiles the x86-64 asm stubs which dryad needs (change the `gcc` call to `clang` here if you like) `gcc -fPIC -c -o start.o src/arch/x86/asm.s`
 2. compiles dryad into an object file: `rustc --target=x86_64-unknown-linux-musl src/lib.rs -g --emit obj -o dryad.o`
 3. links the asm stubs with dryad and then the rust standard libs, and pthreads and libc and etc., and provides the very important linker flags such as `-pie`, `-Bsymbolic`, `-I/tmp/dryad.so.1`, `-soname dryad.so.1`, etc.
 4. copies the resulting binary, `dryad.so.1`, into `/tmp/dryad.so.1` because that's what `PT_INTERPRETER` is set to in the test binaries. In the future we'll obviously make this `/usr/lib/dryad.so.1`, or wherever the appropriate place for the dynamic linker is (GNU's is called `ld-linux-x86-64.so.2` btw).
 
-Eventually I will get around to creating a makefile (or better yet, cargo) --- sorry about that!  Really, stage `1` and `3` from above is the problem in the cargo pipeline, and if someone could figure that out, I'd be massively grateful.  I think the only solution, due to the intimate needs of dryad, is to create a cargo subcommand :/
+Really, stage `1` and `3` from above is the problem in the cargo pipeline, and if someone could figure that out, I'd be massively grateful.  I think the only solution, due to the intimate needs of dryad, is to create a cargo subcommand :/
 
 # Running
 
