@@ -2,13 +2,13 @@
 name = "dryad"
 version = "0.1.1"
 authors = ["m4b <m4b.github.io@gmail.com>"]
-build = "build.rs"
+#build = "build.rs"
 
 [build-dependencies]
 gcc = "0.3"
 
-[lib]
-crate-type = ["dylib"]
+#[lib]
+#crate-type = ["dylib"]
 
 # some attempts at getting cargo to run ...
 #RUSTC=musldist/bin/rustc cargo rustc --release --verbose --lib --target=x86_64-unknown-linux-musl -- -C prefer-dynamic -C link-args="-Wl,--gc-sections,-I/tmp/dryad.so.1,--entry=_start,-nostdlib,-pie"
