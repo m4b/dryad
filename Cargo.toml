@@ -7,6 +7,9 @@ authors = ["m4b <m4b.github.io@gmail.com>"]
 [build-dependencies]
 gcc = "0.3"
 
+[dependencies]
+crossbeam = "0.1"
+
 #[lib]
 #crate-type = ["dylib"]
 

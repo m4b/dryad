@@ -13,9 +13,7 @@ use std::mem;
 use std::fs::File;
 use std::path::Path;
 
-//use scoped_thread::Pool;
-//use std::thread;
-//use std::sync::{Arc, Mutex};
+extern crate crossbeam;
 
 use binary::elf::header::Header;
 use binary::elf::program_header;
@@ -510,6 +508,16 @@ impl<'process> Linker<'process> {
             let _ = g.join().unwrap();
         }
                 */
+
+        let array = [1, 2, 3];
+
+        crossbeam::scope(|scope| {
+            for i in &array {
+                scope.spawn(move || {
+                    println!("element: {}", i);
+                });
+            }
+        });
 
         println!("libc: {:#?}", unsafe {&::tls::__libc});
 
