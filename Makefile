@@ -1,5 +1,3 @@
-#PREFIX=rust
-# shouldn't have to hardcode this fragile dir structure, but for some reason rustup wants to name nightly after host
 PREFIX=$(HOME)/.multirust/toolchains/nightly-x86_64-unknown-linux-gnu
 LIB=$(PREFIX)/lib
 RUSTLIB=$(LIB)/rustlib/x86_64-unknown-linux-musl/lib
@@ -10,11 +8,20 @@ SONAME=dryad.so.1
 
 CARGO=$(shell which cargo)
 
+# adds 300KB, 300 more runtime relocations, and segfaults the binary
+#RUSTLIBS=$(wildcard $(RUSTLIB)/*.rlib $(RUSTLIB)/*.a)
+# this needs better handling, a la discussion with ubsan and Mutabah
+CARGO_DEPS=$(wildcard target/x86_64-unknown-linux-musl/debug/deps/*.rlib)
+# this is a hack because of extra 300KB and segfaulting
+RUSTLIBS := "${RUSTLIB}/libstd-${RUSTHASH}.rlib" "${RUSTLIB}/libcore-${RUSTHASH}.rlib" "${RUSTLIB}/librand-${RUSTHASH}.rlib" "${RUSTLIB}/liballoc-${RUSTHASH}.rlib" "${RUSTLIB}/libcollections-${RUSTHASH}.rlib" "${RUSTLIB}/librustc_unicode-${RUSTHASH}.rlib" "${RUSTLIB}/liballoc_system-${RUSTHASH}.rlib" "${RUSTLIB}/libcompiler-rt.a" "${RUSTLIB}/liblibc-${RUSTHASH}.rlib" ${CARGO_DEPS}
+
 SRC=$(wildcard src/*)
+
+LINK_ARGS := -pie -I/tmp/${SONAME} -soname ${SONAME} --gc-sections -L${LIB} -Bsymbolic -nostdlib -e _start
 
 dryad.so.1 : start.o dryad.o
 	@echo -e "\E[0;4;33mlinking:\E[0m \E[0;32m$(SONAME)\E[0m with $(HASH)"
-	ld -pie --gc-sections -I/tmp/${SONAME} -L${LIB} -soname ${SONAME} -Bsymbolic -nostdlib -e _start -o ${SONAME} start.o dryad.o "${RUSTLIB}/libstd-${RUSTHASH}.rlib" "${RUSTLIB}/libcore-${RUSTHASH}.rlib" "${RUSTLIB}/librand-${RUSTHASH}.rlib" "${RUSTLIB}/liballoc-${RUSTHASH}.rlib" "${RUSTLIB}/libcollections-${RUSTHASH}.rlib" "${RUSTLIB}/librustc_unicode-${RUSTHASH}.rlib" "${RUSTLIB}/liballoc_system-${RUSTHASH}.rlib" "${RUSTLIB}/libcompiler-rt.a" "${RUSTLIB}/liblibc-${RUSTHASH}.rlib" "target/x86_64-unknown-linux-musl/debug/deps/libcrossbeam-be36913e782f04c9.rlib"
+	ld ${LINK_ARGS} -o ${SONAME} start.o dryad.o ${RUSTLIBS}
 	cp ${SONAME} /tmp
 
 start.o : src/arch/x86/asm.s
@@ -25,10 +32,17 @@ dryad.o : ${SRC}
 	@echo -e "\E[0;4;33mcompiling:\E[0m \E[1;32mdryad\E[0m"
 	$(CARGO) rustc --verbose --target=x86_64-unknown-linux-musl --lib -j 4 -- --emit obj -o dryad.o
 
+#almost... but cargo/rustc refuses to compile dylibs with a musl target
+#link-args="-Wl,-pie,-I/tmp/${SONAME},-soname ${SONAME}, --gc-sections, -L${LIB}, -Bsymbolic, -nostdlib, -e _start, -o ${SONAME}, start.o, dryad.o, ${RUSTLIB}/libstd-${RUSTHASH}.rlib, ${RUSTLIB}/libcore-${RUSTHASH}.rlib, ${RUSTLIB}/librand-${RUSTHASH}.rlib, ${RUSTLIB}/liballoc-${RUSTHASH}.rlib, ${RUSTLIB}/libcollections-${RUSTHASH}.rlib, ${RUSTLIB}/librustc_unicode-${RUSTHASH}.rlib, ${RUSTLIB}/liballoc_system-${RUSTHASH}.rlib, ${RUSTLIB}/libcompiler-rt.a, ${RUSTLIB}/liblibc-${RUSTHASH}.rlib, ${CARGO_DEPS}"
+
 clean :
 	cargo clean
 	rm *.o
 	rm ${SONAME}
 	rm *.d
 
+run : dryad.so.1
+	./dryad.so.1
+
 # todo: add make test target, remove gen_tests.sh
+

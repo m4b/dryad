@@ -491,30 +491,12 @@ impl<'process> Linker<'process> {
 
         //if self.config.debug { println!("Dryad:\n  {:#?}", &self); }
 
-        // Fun Fact: uncomment this for ridiculous disaster: runs fine when links itself, but not when it links an executable, because hell
-        /*
-        let v = vec![1, 2, 3, 4];
-        let mut guards = vec![];
-        for k in v {
-
-            let t = thread::spawn(move || {
-                 println!("{} init", k);
-            });
-            
-            guards.push(t);
-        }
-        
-        for g in guards {
-            let _ = g.join().unwrap();
-        }
-                */
-
         let array = [1, 2, 3];
 
         crossbeam::scope(|scope| {
             for i in &array {
                 scope.spawn(move || {
-                    println!("element: {}", i);
+                    println!("crossbeam says: {}", i);
                 });
             }
         });
