@@ -1,10 +1,7 @@
 #!/bin/bash -e
 
-PREFIX=$(pwd)/rust
-echo -e "Installing and building nightly rustc compiler with musl target into $PREFIX"
-mkdir $PREFIX
-cd $PREFIX
-# hack
-curl -sSf https://static.rust-lang.org/rustup.sh > rustup.sh
-chmod +x rustup.sh
-./rustup.sh --disable-sudo --channel=nightly --with-target=x86_64-unknown-linux-musl --prefix=$PREFIX
+curl -O https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-setup
+chmod +x rustup-setup
+./rustup-setup -y --default-toolchain nightly
+rustup default nightly
+rustup target add x86_64-unknown-linux-musl
