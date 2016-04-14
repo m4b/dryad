@@ -20,16 +20,16 @@ SRC=$(wildcard src/*)
 LINK_ARGS := -pie -I/tmp/${SONAME} -soname ${SONAME} --gc-sections -L${LIB} -Bsymbolic -nostdlib -e _start
 
 dryad.so.1 : start.o dryad.o
-	@echo -e "\E[0;4;33mlinking:\E[0m \E[0;32m$(SONAME)\E[0m with $(HASH)"
+	@echo "\33[0;4;33mlinking:\33[0m \33[0;32m$(SONAME)\33[0m with $(HASH)"
 	ld ${LINK_ARGS} -o ${SONAME} start.o dryad.o ${RUSTLIBS}
 	cp ${SONAME} /tmp
 
 start.o : src/arch/x86/asm.s
-	@echo -e "\E[0;4;33mcompiling:\E[0m \E[1;30mstart\E[0m"
+	@echo "\33[0;4;33mcompiling:\33[0m \33[1;30mstart\33[0m"
 	gcc -fPIC -c src/arch/x86/asm.s -o start.o
 
 dryad.o : ${SRC}
-	@echo -e "\E[0;4;33mcompiling:\E[0m \E[1;32mdryad\E[0m"
+	@echo "\33[0;4;33mcompiling:\33[0m \33[1;32mdryad\33[0m"
 	$(CARGO) rustc --verbose --target=x86_64-unknown-linux-musl --lib -j 4 -- --emit obj -o dryad.o
 
 #almost... but cargo/rustc refuses to compile dylibs with a musl target
