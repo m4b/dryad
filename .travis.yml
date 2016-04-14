@@ -4,7 +4,7 @@ before_install:
   - sudo apt-get install -y libsnappy-dev
 install: ./setup.sh
 env:
-  - LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ RUST_BACKTRACE=1
+  - LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ RUST_BACKTRACE=1 PATH="$HOME/.cargo/bin:$PATH"
 script:
   - make
   - ./gen_tests.sh
