@@ -13,7 +13,7 @@ CARGO=$(shell which cargo)
 # this needs better handling, a la discussion with ubsan and Mutabah
 CARGO_DEPS=$(wildcard target/x86_64-unknown-linux-musl/debug/deps/*.rlib)
 # this is a hack because of extra 300KB and segfaulting
-RUSTLIBS := "${RUSTLIB}/libstd-${RUSTHASH}.rlib" "${RUSTLIB}/libcore-${RUSTHASH}.rlib" "${RUSTLIB}/librand-${RUSTHASH}.rlib" "${RUSTLIB}/liballoc-${RUSTHASH}.rlib" "${RUSTLIB}/libcollections-${RUSTHASH}.rlib" "${RUSTLIB}/librustc_unicode-${RUSTHASH}.rlib" "${RUSTLIB}/liballoc_system-${RUSTHASH}.rlib" "${RUSTLIB}/libcompiler-rt.a" "${RUSTLIB}/liblibc-${RUSTHASH}.rlib" ${CARGO_DEPS}
+RUSTLIBS := "${RUSTLIB}/libstd-${RUSTHASH}.rlib" "${RUSTLIB}/libcore-${RUSTHASH}.rlib" "${RUSTLIB}/librand-${RUSTHASH}.rlib" "${RUSTLIB}/liballoc-${RUSTHASH}.rlib" "${RUSTLIB}/libcollections-${RUSTHASH}.rlib" "${RUSTLIB}/librustc_unicode-${RUSTHASH}.rlib" "${RUSTLIB}/liballoc_system-${RUSTHASH}.rlib" "${RUSTLIB}/libcompiler-rt.a" "${RUSTLIB}/liblibc-${RUSTHASH}.rlib"
 
 SRC=$(wildcard src/*)
 
@@ -21,7 +21,7 @@ LINK_ARGS := -pie -I/tmp/${SONAME} -soname ${SONAME} --gc-sections -L${LIB} -Bsy
 
 dryad.so.1 : start.o dryad.o
 	@echo "\33[0;4;33mlinking:\33[0m \33[0;32m$(SONAME)\33[0m with $(HASH)"
-	ld ${LINK_ARGS} -o ${SONAME} start.o dryad.o ${RUSTLIBS}
+	ld ${LINK_ARGS} -o ${SONAME} start.o dryad.o ${RUSTLIBS} ${CARGO_DEPS}
 	cp ${SONAME} /tmp
 
 start.o : src/arch/x86/asm.s
