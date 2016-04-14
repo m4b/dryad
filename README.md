@@ -4,12 +4,6 @@
 
 ![dryad](doc/dryad.jpg)
 
-**NOTE**
-
-> Massive apologies, since it was better to do this sooner than later, I've performed an upstream rebase to remove the erroneously added musldist files which were unfortunately added early on in the development process, and made their way into the upstream repo.
->
-> The project should now be approximately 350K instead of the ridiculous 78MB.  Again, apologies for this, but it was better to get this pain over with sooner rather than later.
-
 `dryad` is the **first** and **only** _parallel_, 64-bit ELF dynamic linker for GNU/Linux, written from scratch in Rust, and is:
 
 0. not parallel
@@ -23,31 +17,36 @@ but ~~all~~ most of these things will disappear in time!
 
 # Build
 
-Now that [PIC musl has landed](https://internals.rust-lang.org/t/static-binary-support-in-rust/2011/55), setting up a build environment (on Linux) is easy.  
+**NOTE**: I am early adopting the new `rustup` [tool](https://www.rustup.rs/), and also now use a Makefile + experimental Cargo.
 
-In order to build dryad you'll need your typical build tools on a linux system, which varies from distro to distro.  But essentially you'll need:
+Of course, you will need your typical build tools on a linux system, essentially:
 
 - `gcc` (or `clang`)
 - `ld` (or `ld.gold`)
 - `curl`
 - an internet connection
-- an x86-64 linux box
+- an x86-64 GNU/Linux box
+
+Unfortunately, I currently do not support cross compiling at the moment (which is an unusual use case anyway), so you will need an x86-64 GNU/Linux machine, otherwise it will fail.
 
 Once that's settled, you have two options, both fairly easy.
 
 ## Setup - Easy
 
-Just run `./setup.sh`, which will download and install the latest rust nightly into the `rust` directory.
+Just run `./setup.sh`, which will download and install the latest rust nightly and musl target into `~/.multirust`.
 
 You can then proceed as normal:
 
-1. `./gen_tests.sh` - builds the test binaries (do this once)
+1. `./gen_tests.sh` - builds the test binaries (do this once) (will add this as a make target soon)
 2. `make` - compiles `dryad.so.1` and copies it to `/tmp`
 3. `test/test` - runs the test binary `test`, whose `PT_INTERPRETER` is `/tmp/dryad.so.1`
+4. `make run` - runs `./dryad.so.1`, this _should_ run correctly without segfaulting, please file a bug if it does not.
 
 ## Setup - Use Nightly Rust, slightly less easier
 
-If the latest `rustc` is not installed, just download and use the latest version of rustup script to install the latest nightly with the musl target enabled, i.e.:
+If you don't want to use rustup, then setting up a build environment will require a little work: you will need a nightly rustc, a `x86_64-unknown-linux-musl` target, and the ability to edit a Makefile to change the environment variables.
+
+If the latest `rustc` is not installed, just download and use the latest version of rustup script to install the latest nightly with the musl target enabled, i.e. something like:
 
 ```
 curl -sSf https://static.rust-lang.org/rustup.sh > rustup.sh
@@ -55,11 +54,11 @@ chmod +x rustup.sh
 sudo ./rustup.sh --channel=nightly --with-target=x86_64-unknown-linux-musl
 ```
 
-And then edit the `Makefile` to use `/usr/local` as the `$PREFIX` instead of `rust`.
+And then edit the appropriate variables in the `Makefile` to use `/usr/local` as the `$PREFIX` instead of `rust`, and probably some other things I'm forgetting about.
 
-You can then compile and run as normal.
+You should be able to then compile and run as normal.
 
-## Why `make` (and not `cargo`)
+## Compilation and Linking Requirements
 
 The `Makefile` does four things:
 
@@ -68,7 +67,9 @@ The `Makefile` does four things:
 3. links the asm stubs with dryad and then the rust standard libs, and pthreads and libc and etc., and provides the very important linker flags such as `-pie`, `-Bsymbolic`, `-I/tmp/dryad.so.1`, `-soname dryad.so.1`, etc.
 4. copies the resulting binary, `dryad.so.1`, into `/tmp/dryad.so.1` because that's what `PT_INTERPRETER` is set to in the test binaries. In the future we'll obviously make this `/usr/lib/dryad.so.1`, or wherever the appropriate place for the dynamic linker is (GNU's is called `ld-linux-x86-64.so.2` btw).
 
-Really, stage `1` and `3` from above is the problem in the cargo pipeline, and if someone could figure that out, I'd be massively grateful.  I think the only solution, due to the intimate needs of dryad, is to create a cargo subcommand :/
+Really, stage `1` and `3` from above is the problem in the cargo pipeline, which is why I still need to manually link.  Additionally, rustc doesn't like to compile a musl binary as a shared object.
+
+I believe some of these issues will go away if I transfer the start assembly into inline assembly in Rust source code (thereby potentially eliminating step 1), but the musl issue could be a problem.
 
 # Running
 
@@ -160,9 +161,8 @@ Here are some major todos off the top of my head
 1. **MAJOR**: `/etc/ld.so.cache` loader and parser
 2. **MAJOR**: `dlfcn.h` implementation and shared object bindings for runtime dynamic loading support
 3. **MAJOR**: properly init dynamic linker's TLS.  This terrifies me.
-4. **MAJOR**: someone figure out how to get cargo working + tests + deps + linking, because that would be so, so amazing
+4. **MAJOR**: cargo: add tests! add benchmarks! add random crates to bloat our binary size!
 5. add the `rtld_dl_activity` gdb/debugger calls for notifying gdb, et. al when shared libraries are loaded, etc.  This will make debugging lazy plt calls _significantly_ easier.
-5. ~~implement the GNU bloom filter for dem speeds~~
 6. better documentation
 7. fix any number of the todos littered across the code
 8. make unsafe code safer with rust best practices; rust experts definitely needed!
