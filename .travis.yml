@@ -1,4 +1,4 @@
-language: rust
+#language: rust
 before_install:
   - sudo apt-get -qq update
   - sudo apt-get install -y libsnappy-dev
