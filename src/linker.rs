@@ -210,7 +210,8 @@ impl<'process> Linker<'process> {
                 let relocations = get_linker_relocations(load_bias, &dynamic);
                 relocate_linker(load_bias, &relocations);
                 // dryad has successfully relocated itself; time to init tls
-                let auxv = auxv::from_raw(block.auxv);
+                let mut auxv = auxv::from_raw(block.auxv);
+                auxv[auxv::AT_PHDR as usize] = addr as u64;
                 __init_tls(auxv.as_ptr()); // this _should_ be safe since vec only allocates and shouldn't access tls. maybe.
                 /* need something like this or write custom tls initializer
 	        if (__init_tp(__copy_tls((void *)builtin_tls)) < 0) {
