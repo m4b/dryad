@@ -27,10 +27,6 @@ dryad.so.1 : $(OUT_DIR)/libdryad.rlib
 	ld ${LINK_ARGS} -o ${SONAME} ${OUT_DIR}/libdryad.rlib ${RUSTLIBS} ${CARGO_DEPS}
 	cp ${SONAME} /tmp
 
-link:
-	@printf "\33[0;4;33mlinking:\33[0m \33[0;32m$(SONAME)\33[0m with $(HASH)\n"
-	ld -Map=${ETC}/dryad.map ${LINK_ARGS} -o ${SONAME} ${OUT_DIR}/libdryad.rlib ${RUSTLIBS} ${CARGO_DEPS}
-
 $(OUT_DIR)/libdryad.rlib : ${SRC}
 	@printf "\33[0;4;33mcompiling:\33[0m \33[1;32mdryad\33[0m\n"
 	$(CARGO) rustc --verbose --target=x86_64-unknown-linux-musl --lib -j 4
@@ -63,3 +59,13 @@ tests: ${TESTS}
 	@echo "Building a binary ${TESTDIR}/float with libm that performs no printing"
 	$(CC) -Wl,-I,${PT_INTERP} ${TESTDIR}/float.c -o ${TESTDIR}/float -lm
 	$(CC) ${TESTDIR}/float.c -o ${TESTDIR}/ldfloat -lm
+
+# for testing, debugging, etc.
+
+link:
+	@printf "\33[0;4;33mlinking:\33[0m \33[0;32m$(SONAME)\33[0m with $(HASH)\n"
+	ld -Map=${ETC}/dryad.map ${LINK_ARGS} -o ${SONAME} ${OUT_DIR}/libdryad.rlib ${RUSTLIBS} ${CARGO_DEPS}
+
+# make moves all day e'er day
+moves:
+	cp dryad.so.1 /tmp
