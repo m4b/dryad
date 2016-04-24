@@ -89,6 +89,8 @@ impl ::std::default::Default for Debug {
 }
 
 impl Debug {
+
+    /// WARNING: We must initialize after relocation, otherwise the `r_brk` function address will be invalid
     pub unsafe fn relocated_init (&mut self, base: u64) {
         self.r_ldbase = base;
         self.r_brk = &r_debug_state as *const _ as u64;
@@ -104,7 +106,7 @@ impl Debug {
 
     pub unsafe fn add_so (&mut self, so: &SharedObject) {
         let so = LinkMap::new(so);
-        // this is not documented, but the debugger requires we append, and not cons (contrary to what you would think), since C programmers are all about the speeds
+        // this is not documented, but the debugger requires we append, and not cons (contrary to what you would think), since C programmers are all about the speeds - after all, who wants a constant prepend when you can have a linear append?
         LinkMap::append(so, self.r_map);
         self.update(State::RT_CONSISTENT);
     }
@@ -113,10 +115,10 @@ impl Debug {
 unsafe impl Send for Debug {}
 unsafe impl Sync for Debug {}
 
-pub fn add_r_debug<'a, 'b> (debug: &'b Debug, exe: &'b mut [dyn::Dyn]) {
-    for dyn in exe {
+pub unsafe fn insert_r_debug<'a, 'b> (dynamic: &[dyn::Dyn]) {
+    for dyn in dynamic {
         if dyn.d_tag == dyn::DT_DEBUG {
-            dyn.d_val = &debug as *const _ as *const Debug as u64;
+            *((dyn as *const _ as *mut u64).offset(1)) = &_r_debug as *const Debug as u64;
             break;
         }
     }
@@ -133,7 +135,7 @@ pub fn add_r_debug<'a, 'b> (debug: &'b Debug, exe: &'b mut [dyn::Dyn]) {
 pub unsafe extern fn r_debug_state () {
 }
 
-// gdb looks for this exact name in the binary referenced in the debugee's PT_INTERP
+/// `gdb` looks for this exact name in the binary referenced in the debugee's `PT_INTERPRETER`
 #[allow(non_upper_case_globals)]
 #[no_mangle]
 pub static mut _r_debug: Debug = Debug {

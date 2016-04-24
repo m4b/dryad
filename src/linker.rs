@@ -179,7 +179,7 @@ pub struct Linker<'process> {
     working_set: Box<HashMap<String, SharedObject<'process>>>, // TODO: we can eventually drop this or have it stack local var instead of field
     link_map_order: Vec<String>,
     link_map: Vec<SharedObject<'process>>,
-    debug: &'process mut gdb::Debug,
+    gdb: &'process mut gdb::Debug,
     // TODO: add a set of SharedObject names which a dryad thread inserts into after stealing work to load a SharedObject;
     // this way when other threads check to see if they should load a dep, they can skip from adding it to the set because it's being worked on
     // TODO: lastly, must determine a termination condition to that indicates all threads have finished recursing and no more work is waiting, and hence can transition to the relocation stage
@@ -221,8 +221,8 @@ impl<'process> Linker<'process> {
                  }
                  */
 
-                let debug = &mut gdb::_r_debug;
-                debug.relocated_init(base);
+                let gdb = &mut gdb::_r_debug;
+                gdb.relocated_init(base);
 
                 // we relocated ourselves so it should be safe to use global data and allocate
                 let config = Config::new(&block);
@@ -245,7 +245,7 @@ impl<'process> Linker<'process> {
                     link_map_order: link_map_order,
                     link_map: link_map,
                     auxv: auxv,
-                    debug: debug,
+                    gdb: gdb,
                 })
 
             } else {
@@ -460,9 +460,9 @@ impl<'process> Linker<'process> {
                     Ok (mut fd) => {
                         found = true;
                         if self.config.debug { println!("<dryad> opened: {:?}", fd); }
-                        unsafe { self.debug.update(gdb::State::RT_ADD); }
+                        unsafe { self.gdb.update(gdb::State::RT_ADD); }
                         let shared_object = try!(loader::load(soname, file.to_string_lossy().into_owned(), &mut fd,  self.config.debug));
-                        unsafe { self.debug.add_so(&shared_object); }
+                        unsafe { self.gdb.add_so(&shared_object); }
 //                        println!("<dryad> DEBUG {:#?}", self.debug);
                         let libs = &shared_object.libs.to_owned(); // TODO: fix this unnecessary allocation, but we _must_ insert before iterating
                         self.working_set.insert(soname.to_string(), shared_object);
@@ -520,14 +520,9 @@ impl<'process> Linker<'process> {
         let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
         let image = try!(SharedObject::from_executable(name, phdr_addr, phnum as usize));
 
-        for dyn in image.dynamic {
-            if dyn.d_tag == dyn::DT_DEBUG {
-                unsafe {
-                    *((dyn as *const _ as *mut u64).offset(1)) = &gdb::_r_debug as *const _ as *const gdb::Debug as u64;
-                }
-                break;
-            }
-        }
+        // insert the _r_debug struct into the executables _DYNAMIC array
+        // this is unsafe because we use pointers because I don't feel like changing every borrowed reference for the dynamic array to a mutable borrow for one single time for the whole program duration that the _DYNAMIC array ever gets mutated
+        unsafe { gdb::insert_r_debug(image.dynamic); }
 
         if self.config.debug { println!("Main Image:\n  {:#?}", &image); }
 

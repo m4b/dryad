@@ -1,16 +1,11 @@
-//#![feature(no_std, lang_items, asm, core, core_str_ext)]
-//#![no_std]
 //#![crate_type="dylib"]
 #![feature(asm, libc)]
-//#![no_main]
-
-//#![feature(std_panic, recover)]
 
 #![allow(dead_code)] // yells about consts otherwise
 #![allow(unused_variables)]
 
 /// Dryad --- the world's first non-functional, yet-to-be-implemented, might be impossible or more likely inefficient --- parallel, dynamic linker.
-/// Many, many thanks to Mutabah, durka42, aatch, tilpner, niconii, bluss, steveklabnik and so many others on the IRC channel for answering my stupid questions.
+/// Many, many thanks to Mutabah, durka42, aatch, tilpner, niconii, bluss, steveklabnik, ubsan and so many others on the IRC channel for answering my stupid questions.
 /// TODO: add support for invoking ./dryad <binary> <args>
 
 mod auxv;
@@ -27,14 +22,6 @@ use linker::Linker;
 use utils::*;
 
 extern crate libc;
-
-// below is gcc attrs for this function...
-//extern "C"
-//void __attribute__((noinline)) __attribute__((visibility("default")))
-// unused; someone figure out how to get gdb working when running as a dyld
-extern {
-    fn rtld_db_dlactivity();
-}
 
 extern {
     /// ELF abi requires `_start`; this must be in assembly because we need
