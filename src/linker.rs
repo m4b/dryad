@@ -25,6 +25,7 @@ use binary::elf::image::SharedObject;
 use binary::elf::image;
 use binary::elf::gnu_hash;
 
+use gdb;
 use utils;
 use kernel_block;
 use auxv;
@@ -56,7 +57,7 @@ impl<'a> Config<'a> {
             var != "" } else { false };
         // because travis is a PoS
         let debug = if let Some (var) = block.getenv("LD_DRYAD_DEBUG") {
-            var != "none" && var != "0" } else { true };
+            var == "1" } else { false };
          // TODO: FIX THIS IS NOT VALID and massively unsafe
         let secure = block.getauxval(auxv::AT_SECURE).unwrap() != 0;
         // TODO: add different levels of verbosity
@@ -178,6 +179,7 @@ pub struct Linker<'process> {
     working_set: Box<HashMap<String, SharedObject<'process>>>, // TODO: we can eventually drop this or have it stack local var instead of field
     link_map_order: Vec<String>,
     link_map: Vec<SharedObject<'process>>,
+    debug: &'process mut gdb::Debug,
     // TODO: add a set of SharedObject names which a dryad thread inserts into after stealing work to load a SharedObject;
     // this way when other threads check to see if they should load a dep, they can skip from adding it to the set because it's being worked on
     // TODO: lastly, must determine a termination condition to that indicates all threads have finished recursing and no more work is waiting, and hence can transition to the relocation stage
@@ -219,6 +221,9 @@ impl<'process> Linker<'process> {
                  }
                  */
 
+                let debug = &mut gdb::_r_debug;
+                debug.relocated_init(base);
+
                 // we relocated ourselves so it should be safe to use global data and allocate
                 let config = Config::new(&block);
                 let mut working_set = Box::new(HashMap::new());
@@ -228,6 +233,7 @@ impl<'process> Linker<'process> {
                 let link_map = Vec::new();
                 link_map_order.push(vdso.name.to_string());
                 working_set.insert(vdso.name.to_string(), vdso);
+
                 Ok (Linker {
                     base: base,
                     load_bias: load_bias,
@@ -239,6 +245,7 @@ impl<'process> Linker<'process> {
                     link_map_order: link_map_order,
                     link_map: link_map,
                     auxv: auxv,
+                    debug: debug,
                 })
 
             } else {
@@ -448,11 +455,15 @@ impl<'process> Linker<'process> {
         if !self.working_set.contains_key(soname) {
             let mut found = false;
             for path in paths {
-                match File::open(Path::new(&path).join(soname)) {
+                let file = Path::new(&path).join(soname);
+                match File::open(&file) {
                     Ok (mut fd) => {
                         found = true;
                         if self.config.debug { println!("<dryad> opened: {:?}", fd); }
-                        let shared_object = try!(loader::load(soname, &mut fd, self.config.debug));
+                        unsafe { self.debug.update(gdb::State::RT_ADD); }
+                        let shared_object = try!(loader::load(soname, file.to_string_lossy().into_owned(), &mut fd,  self.config.debug));
+                        unsafe { self.debug.add_so(&shared_object); }
+//                        println!("<dryad> DEBUG {:#?}", self.debug);
                         let libs = &shared_object.libs.to_owned(); // TODO: fix this unnecessary allocation, but we _must_ insert before iterating
                         self.working_set.insert(soname.to_string(), shared_object);
 
@@ -491,18 +502,16 @@ impl<'process> Linker<'process> {
     pub fn link(mut self, block: &kernel_block::KernelBlock) -> Result<(), String> {
 
         //if self.config.debug { println!("Dryad:\n  {:#?}", &self); }
-
+        /*
         let array = [1, 2, 3];
-
         crossbeam::scope(|scope| {
             for i in &array {
                 scope.spawn(move || {
-                    println!("crossbeam says: {}", i);
+                    //println!("crossbeam says: {}", i);
                 });
             }
         });
-
-        println!("libc: {:#?}", unsafe {&::tls::__libc});
+        */
 
         // build executable
         if self.config.debug { println!("BEGIN EXE LINKING"); }
@@ -510,7 +519,19 @@ impl<'process> Linker<'process> {
         let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
         let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
         let image = try!(SharedObject::from_executable(name, phdr_addr, phnum as usize));
+
+        for dyn in image.dynamic {
+            if dyn.d_tag == dyn::DT_DEBUG {
+                unsafe {
+                    *((dyn as *const _ as *mut u64).offset(1)) = &gdb::_r_debug as *const _ as *const gdb::Debug as u64;
+                }
+                break;
+            }
+        }
+
         if self.config.debug { println!("Main Image:\n  {:#?}", &image); }
+
+//        gdb::add_r_debug(&self.debug, image.dynamic);
 
         // 1. load all
 
@@ -566,7 +587,7 @@ impl<'process> Linker<'process> {
             self.relocate_plt(so);
         }
 
-        println!("libc: {:#?}", unsafe { &::tls::__libc});
+//        println!("libc: {:#?}", unsafe { &::tls::__libc});
         // <join>
         // 3. transfer control
 

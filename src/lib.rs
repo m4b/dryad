@@ -20,6 +20,7 @@ mod binary;
 mod tls;
 pub mod runtime;
 pub mod linker;
+pub mod gdb;
 
 use kernel_block::KernelBlock;
 use linker::Linker;

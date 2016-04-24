@@ -210,13 +210,14 @@ pub struct SharedObject<'process> {
     pub map_end: u64,
     pub libs: Vec<&'process str>,
     pub phdrs: &'process[ProgramHeader],
-    pub dynamic: &'process[Dyn],
+    pub dynamic: &'process [Dyn],
     pub strtab: Strtab<'process>,
     pub symtab: &'process[Sym],
     pub relatab: &'process[Rela],
     pub pltrelatab: &'process[Rela],
     pub pltgot: *const u64,
-    pub gnu_hash: Option<GnuHash<'process>>
+    pub gnu_hash: Option<GnuHash<'process>>,
+    pub load_path: Option<String>,
 }
 
 impl<'process> fmt::Debug for SharedObject<'process> {
@@ -256,6 +257,7 @@ impl<'process> SharedObject<'process> {
             pltrelatab: pltrelatab,
             pltgot: link_info.pltgot as *const u64,
             gnu_hash: gnu_hash,
+            load_path: None,
         }
     }
 
@@ -302,6 +304,7 @@ impl<'process> SharedObject<'process> {
                     pltrelatab: pltrelatab,
                     pltgot: pltgot,
                     gnu_hash: gnu_hash,
+                    load_path: Some (name.to_string()), // TODO: make absolute?
                 })
 
             } else {

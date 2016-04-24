@@ -149,7 +149,7 @@ fn pflags_to_prot (x:u32) -> isize {
 /// Loads an ELF binary from the given fd, mmaps its contents, and returns a SharedObject, whose lifetime is tied to the mmap's, i.e., manually managed
 /// TODO: refactor this code so as much as possible is independent of an `File` parameter
 /// TODO: probably just move this function to image and use it as the impl
-pub fn load<'a> (soname: &str, fd: &mut File, debug: bool) -> Result <SharedObject<'a>, String> {
+pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) -> Result <SharedObject<'a>, String> {
     // 1. Suck up the elf header and construct the program headers
     let mut elf_header = [0; header::EHDR_SIZE];
     let _ = fd.read(&mut elf_header);
@@ -274,6 +274,7 @@ pub fn load<'a> (soname: &str, fd: &mut File, debug: bool) -> Result <SharedObje
         pltrelatab: pltrelatab,
         pltgot: pltgot as *const u64,
         gnu_hash: gnu_hash,
+        load_path: Some (load_path),
     };
 
     Ok (shared_object)
