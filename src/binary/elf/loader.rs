@@ -146,6 +146,9 @@ fn pflags_to_prot (x:u32) -> isize {
     (if x & PF_W == PF_W { mmap::PROT_WRITE } else { 0 })
 }
 
+// MAJOR TODO: I believe gdb is messed up due to
+// 1. program headers not being mmap'd in expected location
+// 2. dynamic array + strtab's not being in expected location w.r.t. program headers
 /// Loads an ELF binary from the given fd, mmaps its contents, and returns a SharedObject, whose lifetime is tied to the mmap's, i.e., manually managed
 /// TODO: refactor this code so as much as possible is independent of an `File` parameter
 /// TODO: probably just move this function to image and use it as the impl

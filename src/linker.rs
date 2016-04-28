@@ -224,6 +224,7 @@ impl<'process> Linker<'process> {
                 // we relocated ourselves so it should be safe to init the gdb debug protocols, use global data, reference static strings, call sweet functions, etc.
                 let gdb = &mut gdb::_r_debug;
                 gdb.relocated_init(base);
+                gdb.r_map = Box::into_raw(Box::new(gdb::LinkMap::new(base, "/tmp/dryad.so.1", dynamic)));
 
                 let config = Config::new(&block);
                 let mut working_set = Box::new(HashMap::new());
@@ -460,7 +461,6 @@ impl<'process> Linker<'process> {
                     Ok (mut fd) => {
                         found = true;
                         if self.config.debug { println!("<dryad> opened: {:?}", fd); }
-                        unsafe { self.gdb.update(gdb::State::RT_ADD); }
                         let shared_object = try!(loader::load(soname, file.to_string_lossy().into_owned(), &mut fd,  self.config.debug));
                         unsafe { self.gdb.add_so(&shared_object); }
 
@@ -532,9 +532,11 @@ impl<'process> Linker<'process> {
         // this is the only obvious candidate for parallelization, and it's dubious at best... but large binaries spend 20% of time loading and 80% on relocation
         self.link_map_order.extend(image.libs.iter().map(|s| s.to_string()));
 
+        unsafe { self.gdb.update(gdb::State::RT_ADD); }
         for lib in &image.libs {
             try!(self.load(lib));
         }
+        unsafe { self.gdb.update(gdb::State::RT_CONSISTENT); }
 
         if self.config.debug { println!("<dryad> link_map_order: {:#?}", self.link_map_order); }
 
