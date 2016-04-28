@@ -221,10 +221,10 @@ impl<'process> Linker<'process> {
                  }
                  */
 
+                // we relocated ourselves so it should be safe to init the gdb debug protocols, use global data, reference static strings, call sweet functions, etc.
                 let gdb = &mut gdb::_r_debug;
                 gdb.relocated_init(base);
 
-                // we relocated ourselves so it should be safe to use global data and allocate
                 let config = Config::new(&block);
                 let mut working_set = Box::new(HashMap::new());
                 let vdso = SharedObject::from_raw(vdso_addr);
@@ -463,7 +463,7 @@ impl<'process> Linker<'process> {
                         unsafe { self.gdb.update(gdb::State::RT_ADD); }
                         let shared_object = try!(loader::load(soname, file.to_string_lossy().into_owned(), &mut fd,  self.config.debug));
                         unsafe { self.gdb.add_so(&shared_object); }
-//                        println!("<dryad> DEBUG {:#?}", self.debug);
+
                         let libs = &shared_object.libs.to_owned(); // TODO: fix this unnecessary allocation, but we _must_ insert before iterating
                         self.working_set.insert(soname.to_string(), shared_object);
 
@@ -525,8 +525,6 @@ impl<'process> Linker<'process> {
         unsafe { gdb::insert_r_debug(image.dynamic); }
 
         if self.config.debug { println!("Main Image:\n  {:#?}", &image); }
-
-//        gdb::add_r_debug(&self.debug, image.dynamic);
 
         // 1. load all
 
