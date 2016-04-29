@@ -64,6 +64,27 @@ fn map_fragment(fd: &File, base: u64, offset: u64, size: usize) -> Result<(u64, 
 }
 
 #[inline(always)]
+fn mmap_dynamic<'a> (soname: &str, fd: &File, phdrs: &[program_header::ProgramHeader]) -> Result<&'a[dyn::Dyn], String>{
+    for phdr in phdrs {
+        if phdr.p_type == program_header::PT_DYNAMIC {
+            // mmap
+            let (dynamic_start, dynamic_size, dynamic_data) = try!(map_fragment(fd, 0, phdr.p_offset, phdr.p_filesz as usize));
+            // iter
+            let dyn_ptr = dynamic_data as *const dyn::Dyn;
+            let mut i = 0;
+            unsafe {
+                while (*dyn_ptr.offset(i)).d_tag != dyn::DT_NULL {
+                    i += 1;
+                }
+                // slice and tie the lifetime to the mmap
+                return Ok (slice::from_raw_parts(dyn_ptr, (i+1) as usize))
+            }
+        }
+    }
+    Err (format!("<dryad> No dynamic section for {}", soname))
+}
+
+#[inline(always)]
 fn compute_load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
     let mut max_vaddr = 0;
     let mut min_vaddr = 0;
@@ -106,41 +127,22 @@ fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u
 
     if start == mmap::MAP_FAILED {
 
-        Err(format!("<dryad> Failure: anonymous mmap failed for size {:x} with errno {}", size, get_errno()))
+        Err (format!("<dryad> Failure: anonymous mmap failed for size {:x} with errno {}", size, get_errno()))
 
     } else {
 
         let load_bias = start - min_vaddr;
         let end = start + size as u64;
-        Ok((start, load_bias, end))
+        Ok ((start, load_bias, end))
     }
 }
 
 #[inline(always)]
-fn mmap_dynamic<'a> (soname: &str, fd: &File, phdrs: &[program_header::ProgramHeader]) -> Result<&'a[dyn::Dyn], String>{
-    for phdr in phdrs {
-        if phdr.p_type == program_header::PT_DYNAMIC {
-            // mmap
-            let (dynamic_start, dynamic_size, dynamic_data) = try!(map_fragment(fd, 0, phdr.p_offset, phdr.p_filesz as usize));
-            // iter
-            let dyn_ptr = dynamic_data as *const dyn::Dyn;
-            let mut i = 0;
-            unsafe {
-                while (*dyn_ptr.offset(i)).d_tag != dyn::DT_NULL {
-                    i += 1;
-                }
-                // slice and tie the lifetime to the mmap
-                return Ok (slice::from_raw_parts(dyn_ptr, (i+1) as usize))
-            }
-        }
-    }
-    Err (format!("<dryad> No dynamic section for {}", soname))
-}
-
-#[inline(always)]
-fn pflags_to_prot (x:u32) -> isize {
+fn pflags_to_prot (x: u32) -> isize {
     use binary::elf::program_header::{PF_X, PF_R, PF_W};
 
+    // I'm a dick for writing this/copying maniac C programmer implementations: but it checks the flag to see if it's the PF value,
+    // and returns the appropriate mmap version, and logical ORs this for use in the mmap prot argument
     (if x & PF_X == PF_X { mmap::PROT_EXEC } else { 0 }) |
     (if x & PF_R == PF_R { mmap::PROT_READ } else { 0 }) |
     (if x & PF_W == PF_W { mmap::PROT_WRITE } else { 0 })
@@ -165,6 +167,10 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     // TODO: replace with the mmap'd version or see if we can just forget about program headers being stored altogether
     let phdrs = unsafe { slice::from_raw_parts(phdrs.as_ptr() as *const program_header::ProgramHeader, elf_header.e_phnum as usize) } ;
 
+    // 2. Reserve address space with anon mmap
+    let (start, load_bias, end) = try!(reserve_address_space(&phdrs));
+    if debug { println!("<loader> reserved {:#x} - {:#x}", start, end); }
+
     // TODO: swap location of this after the load bias computation so we can construct the LinkInfo with the load bias and not worry about other nonsense
     // 1.5 mmap the dynamic array with the strtab so we can access them and resolve symbol lookups against this library; this will require mmapping the segments, and storing the dynamic array, along with the strtab; TODO: benchmark against sucking them up ourselves into memory and resolve queries against that way -- probably slower...
 
@@ -185,9 +191,6 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     // TODO: probably remove this?, and add unsafe
     let symtab = sym::get_symtab(symtab_data as *const sym::Sym, num_syms as usize);
 
-    // 2. Reserve address space with anon mmap
-    let (start, load_bias, end) = try!(reserve_address_space(&phdrs));
-    if debug { println!("<loader> reserved {:#x} - {:#x}", start, end); }
     // semi-hack with adding the load bias right now, but probably fine
     let relatab = unsafe { rela::get(link_info.rela + load_bias, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize) };
 
@@ -203,21 +206,21 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
 
         // TODO: add a boolean switch to know there were actually `PT_LOAD` sections, and `Err` otherwise
 
-        let seg_start:u64 = phdr.p_vaddr + load_bias;
-        let seg_end:u64   = seg_start + phdr.p_memsz;
+        let seg_start: u64 = phdr.p_vaddr + load_bias;
+        let seg_end: u64   = seg_start + phdr.p_memsz;
 
-        let seg_page_start:u64 = page::page_start(seg_start);
-        let seg_page_end:u64   = page::page_start(seg_end);
+        let seg_page_start: u64 = page::page_start(seg_start);
+        let seg_page_end: u64   = page::page_start(seg_end);
 
         // TODO: figure this out
-        let seg_file_end:u64 = seg_start + phdr.p_filesz;
+        let seg_file_end: u64 = seg_start + phdr.p_filesz;
 
         // File offsets.
-        let file_start:u64 = phdr.p_offset;
-        let file_end:u64   = file_start + phdr.p_filesz;
+        let file_start: u64 = phdr.p_offset;
+        let file_end: u64   = file_start + phdr.p_filesz;
 
         let file_page_start = page::page_start(file_start);
-        let file_length:u64 = file_end - file_page_start;
+        let file_length: u64 = file_end - file_page_start;
 
         // TODO: add error checking, if file size <= 0, if file_end greater than file_size, etc.
 

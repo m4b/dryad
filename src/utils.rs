@@ -220,6 +220,11 @@ pub mod page {
     #[inline(always)]
     pub fn page_end (x: u64) -> u64 { page_start(x + PAGE_SIZE_MINUS_1) }
 
+    #[test]
+    fn t_page_start () {
+        assert_eq!(page_start(0x1000), 0x1000)
+    }
+
 }
 
 pub mod mmap {
