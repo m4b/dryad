@@ -3,6 +3,7 @@ use binary::elf::image::SharedObject;
 use std::ffi::CString;
 use std::fmt;
 use std::default::Default;
+use std::clone::Clone;
 
 #[derive(Copy, Clone, Debug)]
 #[allow(non_camel_case_types)]
@@ -23,10 +24,10 @@ pub struct LinkMap {
     pub l_next: *mut LinkMap,
     pub l_prev: *mut LinkMap,
 }
-impl ::std::clone::Clone for LinkMap {
+impl Clone for LinkMap {
     fn clone(&self) -> Self { *self }
 }
-impl ::std::default::Default for LinkMap {
+impl Default for LinkMap {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 impl fmt::Debug for LinkMap {
@@ -93,10 +94,10 @@ pub struct Debug {
     pub r_state: State,
     pub r_ldbase: u64,
 }
-impl ::std::clone::Clone for Debug {
+impl Clone for Debug {
     fn clone(&self) -> Self { *self }
 }
-impl ::std::default::Default for Debug {
+impl Default for Debug {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 

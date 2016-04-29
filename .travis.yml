@@ -7,6 +7,6 @@ env:
   - LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ RUST_BACKTRACE=1 PATH="$HOME/.cargo/bin:$PATH"
 script:
   - make
-  - ./gen_tests.sh
+  - make tests
   - ./dryad.so.1
 #  - test/test
