@@ -230,25 +230,25 @@ pub mod page {
 pub mod mmap {
     use std::os::raw::{c_int};
 
-    pub const PROT_READ:isize = 0x1; /* Page can be read.  */
-    pub const PROT_WRITE:isize = 0x2; /* Page can be written.  */
-    pub const PROT_EXEC:isize = 0x4; /* Page can be executed.  */
-    pub const PROT_NONE:isize = 0x0; /* Page can not be accessed.  */
-    pub const PROT_GROWSDOWN:isize = 0x01000000; /* Extend change to start of growsdown vma (mprotect only).  */
-    pub const PROT_GROWSUP:isize = 0x02000000; /* Extend change to start of growsup vma (mprotect only).  */
+    pub const PROT_READ: isize = 0x1; /* Page can be read.  */
+    pub const PROT_WRITE: isize = 0x2; /* Page can be written.  */
+    pub const PROT_EXEC: isize = 0x4; /* Page can be executed.  */
+    pub const PROT_NONE: isize = 0x0; /* Page can not be accessed.  */
+    pub const PROT_GROWSDOWN: isize = 0x01000000; /* Extend change to start of growsdown vma (mprotect only).  */
+    pub const PROT_GROWSUP: isize = 0x02000000; /* Extend change to start of growsup vma (mprotect only).  */
 
     /* Sharing types (must choose one and only one of these).  */
-    pub const MAP_FILE:isize = 0x0; /* no flag bits to map a file  */
-    pub const MAP_SHARED:isize = 0x01; /* Share changes.  */
-    pub const MAP_PRIVATE:isize = 0x02; /* Changes are private.  */
-    pub const MAP_ANONYMOUS:isize = 0x20; // just guessing, this is wrapped in a ifdef with __MAP_ANONYMOUS as the value
+    pub const MAP_FILE: isize = 0x0; /* no flag bits to map a file  */
+    pub const MAP_SHARED: isize = 0x01; /* Share changes.  */
+    pub const MAP_PRIVATE: isize = 0x02; /* Changes are private.  */
+    pub const MAP_ANONYMOUS: isize = 0x20; // just guessing, this is wrapped in a ifdef with __MAP_ANONYMOUS as the value
     /* Other flags.  */
-    pub const MAP_DENYWRITE:isize = 0x800;
-    pub const MAP_COPY:isize = MAP_PRIVATE | MAP_DENYWRITE;
-    pub const MAP_FIXED:isize = 0x10; /* Interpret addr exactly.  */
+    pub const MAP_DENYWRITE: isize = 0x800;
+    pub const MAP_COPY: isize = MAP_PRIVATE | MAP_DENYWRITE;
+    pub const MAP_FIXED: isize = 0x10; /* Interpret addr exactly.  */
 
     /// map failed, from sys/mman.h, technically ((void *) - 1) ...
-    pub const MAP_FAILED:u64 = !0;
+    pub const MAP_FAILED: u64 = !0;
 
     // from musl libc
     extern {
