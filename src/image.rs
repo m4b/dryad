@@ -87,8 +87,8 @@ impl<'process> SharedObject<'process> {
         let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
         let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz as usize);
         let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
-        let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
-        let pltrelatab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
+        let relatab = rela::from_raw(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
+        let pltrelatab = rela::from_raw_plt(link_info.jmprel, link_info.pltrelsz as usize);
         let gnu_hash = if link_info.gnu_hash == 0 { None } else { Some (GnuHash::new(link_info.gnu_hash as *const u32, symtab.len())) };
         SharedObject {
             name: strtab.get(link_info.soname),
@@ -128,12 +128,12 @@ impl<'process> SharedObject<'process> {
 
                 let link_info = dyn::LinkInfo::new(dynamic, load_bias as usize);
                 // TODO: swap out the link_info syment with compile time constant SIZEOF_SYM?
-                let num_syms = ((link_info.strtab - link_info.symtab) / link_info.syment); // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
+                let num_syms = (link_info.strtab - link_info.symtab) / link_info.syment; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
                 let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
                 let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz);
                 let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
-                let relatab = rela::get(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
-                let pltrelatab = rela::get_plt(link_info.jmprel, link_info.pltrelsz as usize);
+                let relatab = rela::from_raw(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
+                let pltrelatab = rela::from_raw_plt(link_info.jmprel, link_info.pltrelsz as usize);
 
                 let pltgot = link_info.pltgot as *const u64;
                 let gnu_hash = if link_info.gnu_hash == 0 { None } else { Some (GnuHash::new(link_info.gnu_hash as *const u32, symtab.len())) };
