@@ -87,8 +87,8 @@ impl<'process> SharedObject<'process> {
         let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
         let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz as usize);
         let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
-        let relatab = rela::from_raw(link_info.rela, link_info.relasz);
-        let pltrelatab = rela::from_raw(link_info.jmprel, link_info.pltrelsz);
+        let relatab = rela::from_raw(link_info.rela as *const rela::Rela, link_info.relasz);
+        let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);
         let gnu_hash = if link_info.gnu_hash == 0 { None } else { Some (GnuHash::new(link_info.gnu_hash as *const u32, symtab.len())) };
         SharedObject {
             name: strtab.get(link_info.soname),
@@ -132,8 +132,8 @@ impl<'process> SharedObject<'process> {
                 let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
                 let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz);
                 let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
-                let relatab = rela::from_raw(link_info.rela, link_info.relasz);
-                let pltrelatab = rela::from_raw(link_info.jmprel, link_info.pltrelsz);
+                let relatab = rela::from_raw(link_info.rela as *const rela::Rela, link_info.relasz);
+                let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);
 
                 let pltgot = link_info.pltgot as *const u64;
                 let gnu_hash = if link_info.gnu_hash == 0 { None } else { Some (GnuHash::new(link_info.gnu_hash as *const u32, symtab.len())) };
