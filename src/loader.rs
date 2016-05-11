@@ -192,7 +192,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     let symtab = unsafe { sym::from_raw(symtab_data as *const sym::Sym, num_syms) };
 
     // semi-hack with adding the load bias right now, but probably fine
-    let relatab = unsafe { rela::from_raw(link_info.rela + load_bias, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize) };
+    let relatab = unsafe { rela::from_raw(link_info.rela + load_bias as usize, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize) };
 
     let pltrelatab = unsafe { rela::from_raw_plt(link_info.jmprel + load_bias, link_info.pltrelsz as usize) };
 

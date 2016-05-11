@@ -87,7 +87,7 @@ impl<'process> SharedObject<'process> {
         let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
         let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz as usize);
         let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
-        let relatab = rela::from_raw(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize);
+        let relatab = rela::from_raw(link_info.rela, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount);
         let pltrelatab = rela::from_raw_plt(link_info.jmprel, link_info.pltrelsz as usize);
         let gnu_hash = if link_info.gnu_hash == 0 { None } else { Some (GnuHash::new(link_info.gnu_hash as *const u32, symtab.len())) };
         SharedObject {
