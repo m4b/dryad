@@ -189,7 +189,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
 
     let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM;
     // TODO: probably remove this?, and add unsafe
-    let symtab = unsafe { sym::from_raw(symtab_data as *const sym::Sym, num_syms as usize) };
+    let symtab = unsafe { sym::from_raw(symtab_data as *const sym::Sym, num_syms) };
 
     // semi-hack with adding the load bias right now, but probably fine
     let relatab = unsafe { rela::get(link_info.rela + load_bias, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize) };
