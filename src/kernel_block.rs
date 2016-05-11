@@ -3,6 +3,7 @@ use utils::*;
 
 use std::slice;
 
+#[derive(Debug)]
 pub struct KernelBlock<'a>{
     pub argc: isize,
     pub argv: &'a[*const u8],
