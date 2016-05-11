@@ -1,5 +1,5 @@
 use binary::elf::dyn;
-use binary::elf::image::SharedObject;
+use image::SharedObject;
 use std::ffi::CString;
 use std::fmt;
 use std::default::Default;

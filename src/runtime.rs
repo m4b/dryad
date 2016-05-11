@@ -1,4 +1,4 @@
-use binary::elf::image::SharedObject;
+use image::SharedObject;
 use binary::elf::rela;
 use binary::elf::gnu_hash;
 

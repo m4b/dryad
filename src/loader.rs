@@ -12,13 +12,13 @@ use std::os::raw::{c_int};
 
 use utils::mmap;
 use utils::page;
+use image::SharedObject;
 use binary::elf::header;
 use binary::elf::program_header;
 use binary::elf::dyn;
 use binary::elf::sym;
 use binary::elf::rela;
 use binary::elf::strtab::Strtab;
-use binary::elf::image::{LinkInfo, SharedObject};
 use binary::elf::gnu_hash::GnuHash;
 
 extern {
@@ -175,21 +175,21 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     // 1.5 mmap the dynamic array with the strtab so we can access them and resolve symbol lookups against this library; this will require mmapping the segments, and storing the dynamic array, along with the strtab; TODO: benchmark against sucking them up ourselves into memory and resolve queries against that way -- probably slower...
 
     let dynamic = try!(mmap_dynamic(soname, &fd, phdrs));
-    let link_info = LinkInfo::new(&dynamic, 0);
+    let link_info = dyn::LinkInfo::new(&dynamic, 0);
 
     // now get the strtab from the dynamic array
-    let (strtab_start, strtab_size, strtab_data) = try!(map_fragment(&fd, 0, link_info.strtab, link_info.strsz));
-    let strtab = Strtab::new(strtab_data as *const u8, link_info.strsz as usize);
+    let (strtab_start, strtab_size, strtab_data) = try!(map_fragment(&fd, 0, link_info.strtab as u64, link_info.strsz));
+    let strtab = unsafe { Strtab::from_raw(strtab_data as *const u8, link_info.strsz as usize) };
 
     let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
 
     let symtab_ptr = link_info.symtab as *const sym::Sym;
     // let (symtab_start, symtab_size, symtab_data) = try!(map_fragment(&fd, 0, link_info.symtab, 2192 * sym::SIZEOF_SYM as u64));
-    let (symtab_start, symtab_size, symtab_data) = try!(map_fragment(&fd, 0, link_info.symtab, (link_info.strtab - link_info.symtab) as usize));
+    let (symtab_start, symtab_size, symtab_data) = try!(map_fragment(&fd, 0, link_info.symtab as u64, (link_info.strtab - link_info.symtab) as usize));
 
-    let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM as u64;
+    let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM;
     // TODO: probably remove this?, and add unsafe
-    let symtab = sym::get_symtab(symtab_data as *const sym::Sym, num_syms as usize);
+    let symtab = unsafe { sym::from_raw(symtab_data as *const sym::Sym, num_syms as usize) };
 
     // semi-hack with adding the load bias right now, but probably fine
     let relatab = unsafe { rela::get(link_info.rela + load_bias, link_info.relasz as usize, link_info.relaent as usize, link_info.relacount as usize) };

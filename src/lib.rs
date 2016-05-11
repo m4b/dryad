@@ -8,10 +8,15 @@
 /// Many, many thanks to Mutabah, durka42, aatch, tilpner, niconii, bluss, steveklabnik, ubsan and so many others on the IRC channel for answering my stupid questions.
 /// TODO: add support for invoking ./dryad <binary> <args>
 
+pub extern crate goblin;
+
+pub use goblin as binary;
+
 mod auxv;
 mod kernel_block;
 mod utils;
-mod binary;
+mod image;
+mod loader;
 mod tls;
 pub mod runtime;
 pub mod linker;

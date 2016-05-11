@@ -20,9 +20,9 @@ use binary::elf::program_header;
 use binary::elf::program_header::ProgramHeader;
 use binary::elf::dyn;
 use binary::elf::rela;
-use binary::elf::loader;
-use binary::elf::image::SharedObject;
-use binary::elf::image;
+use loader;
+use image::SharedObject;
+use image;
 use binary::elf::gnu_hash;
 
 use gdb;
