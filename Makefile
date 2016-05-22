@@ -14,7 +14,7 @@ CARGO=$(shell which cargo)
 # this needs better handling, a la discussion with ubsan and Mutabah
 CARGO_DEPS=$(wildcard target/x86_64-unknown-linux-musl/debug/deps/*.rlib)
 # this is a hack because of extra 300KB and segfaulting
-RUSTLIBS := $(addprefix $(RUSTLIB), /libstd-${RUSTHASH}.rlib /libcore-${RUSTHASH}.rlib /librand-${RUSTHASH}.rlib /liballoc-${RUSTHASH}.rlib /libcollections-${RUSTHASH}.rlib /librustc_unicode-${RUSTHASH}.rlib /liballoc_system-${RUSTHASH}.rlib /libcompiler-rt.a /liblibc-${RUSTHASH}.rlib)
+RUSTLIBS := $(addprefix $(RUSTLIB), /libstd-${RUSTHASH}.rlib /libcore-${RUSTHASH}.rlib /librand-${RUSTHASH}.rlib /liballoc-${RUSTHASH}.rlib /libcollections-${RUSTHASH}.rlib /librustc_unicode-${RUSTHASH}.rlib /liballoc_system-${RUSTHASH}.rlib /libpanic_unwind-${RUSTHASH}.rlib /libunwind-${RUSTHASH}.rlib /libcompiler-rt.a /liblibc-${RUSTHASH}.rlib)
 
 SONAME=dryad.so.1
 PT_INTERP=/tmp/${SONAME}
@@ -27,12 +27,7 @@ dryad.so.1: $(OUT_DIR)/libdryad.rlib
 	ld ${LINK_ARGS} -o ${SONAME} ${OUT_DIR}/libdryad.rlib ${RUSTLIBS} ${CARGO_DEPS}
 	cp ${SONAME} /tmp
 
-../goblin/target/debug/libgoblin.rlib: ../goblin/src/elf/*.rs
-	$(MAKE) -C ../goblin
-
-goblin: ../goblin/target/debug/libgoblin.rlib
-
-$(OUT_DIR)/libdryad.rlib: goblin $(SRC)
+$(OUT_DIR)/libdryad.rlib: $(SRC)
 	@printf "\33[0;4;33mcompiling:\33[0m \33[1;32mdryad\33[0m\n"
 	$(CARGO) rustc --verbose --target=x86_64-unknown-linux-musl --lib -j 4
 
@@ -75,4 +70,4 @@ link:
 moves:
 	cp dryad.so.1 /tmp
 
-.PHONY: moves link clean tests run goblin
+.PHONY: moves link clean tests run
