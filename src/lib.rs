@@ -54,6 +54,7 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
         // > Ho ho.  We are not the program interpreter!  We are the program itself!
         println!("-=|dryad====-");
         println!("Ho ho.  We are not the program interpreter!  We are the program itself!");
+        let mut ret = 0;
         if block.argc >= 2 {
             let binary = str_at(block.argv[1], 0);
             println!("binary: {:?}", binary);
@@ -61,8 +62,9 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
             println!("{:#?}", elf);
         } else {
             println!("usage: dryad <path/to/bin>");
+            ret = 1;
         }
-        _exit(0);
+        _exit(ret);
         return 0xd47ad // to make compiler happy
     }
 

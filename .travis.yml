@@ -8,5 +8,5 @@ env:
 script:
   - make
   - make tests
-  - ./dryad.so.1
+  - ./dryad.so.1 /bin/ls
 #  - test/test
