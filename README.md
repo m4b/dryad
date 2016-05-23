@@ -158,11 +158,9 @@ If you don't know anything about dynamic linking on x86-64 GNU systems for ELF, 
 
 Here are some major todos off the top of my head
 
-1. **MAJOR**: `/etc/ld.so.cache` loader and parser
+1. **MAJOR**: properly init dynamic linker's TLS: it's the _final countdown_.
 2. **MAJOR**: `dlfcn.h` implementation and shared object bindings for runtime dynamic loading support
-3. **MAJOR**: properly init dynamic linker's TLS.  This terrifies me.
-4. **MAJOR**: cargo: add tests! add benchmarks! add random crates to bloat our binary size!
-5. add the `rtld_dl_activity` gdb/debugger calls for notifying gdb, et. al when shared libraries are loaded, etc.  This will make debugging lazy plt calls _significantly_ easier.
+3. **MINOR**: `/etc/ld.so.cache` loader and parser
 6. better documentation
 7. fix any number of the todos littered across the code
 8. make unsafe code safer with rust best practices; rust experts definitely needed!
