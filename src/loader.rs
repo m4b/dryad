@@ -3,7 +3,6 @@
 
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
-use std::slice;
 use std::os::raw::{c_int};
 
 use utils::mmap;
