@@ -207,7 +207,7 @@ impl<'process> Linker<'process> {
             let phdrs = ProgramHeader::from_raw_parts(addr, ehdr.e_phnum as usize);
             let load_bias = image::compute_load_bias_wrapping(base, &phdrs) as u64;
             let vdso_addr = block.getauxval(auxv::AT_SYSINFO_EHDR).unwrap();
-            if let Some(dynamic) = dyn::get_dynamic_array(load_bias, &phdrs) {
+            if let Some(dynamic) = dyn::from_phdrs(load_bias, &phdrs) {
 
                 let relocations = get_linker_relocations(load_bias, &dynamic);
                 relocate_linker(load_bias, &relocations);

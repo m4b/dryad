@@ -199,6 +199,16 @@ pub unsafe extern fn write_chars_at(cs: *const u8) {
     write(as_str(cs));
 }
 
+extern {
+    /// libc #defines errno *(__errno_location()) ... so errno isn't a symbol in the actual binary and accesses will segfault us. yay.
+    fn __errno_location() -> *const i32;
+}
+
+#[inline(always)]
+pub fn get_errno () -> i32 {
+    unsafe { *__errno_location() }
+}
+
 pub mod page {
    // from <sys/user.h>
     pub const PAGE_SHIFT: u64    = 12;
@@ -229,6 +239,8 @@ pub mod page {
 
 pub mod mmap {
     use std::os::raw::{c_int};
+    use std::fs::File;
+    use std::os::unix::io::AsRawFd;
 
     pub const PROT_READ: isize = 0x1; /* Page can be read.  */
     pub const PROT_WRITE: isize = 0x2; /* Page can be written.  */
@@ -258,6 +270,38 @@ pub mod mmap {
     #[inline(always)]
     pub unsafe fn mmap(addr: *const u64, len: usize, prot: isize, flags: c_int, fildes: c_int, off: usize) -> u64 {
         mmap64(addr, len, prot, flags, fildes, off)
+    }
+
+    #[inline(always)]
+    fn map_fragment(fd: &File, base: u64, offset: u64, size: usize) -> Result<(u64, usize, *const u64), String> {
+        use utils::page;
+        let offset = base + offset;
+        let page_min = page::page_start(offset);
+        let end_offset = offset + size as u64;
+        let end_offset = end_offset + page::page_offset(offset);
+
+        let map_size: usize = (end_offset - page_min) as usize;
+
+        if map_size < size {
+            return Err (format!("<dryad> Error: file {:#?} has map_size = {} < size = {}, aborting", fd, map_size, size))
+        }
+
+        let map_start = unsafe { mmap(0 as *const u64,
+                                            map_size,
+                                            PROT_READ,
+                                            MAP_PRIVATE as c_int,
+                                            fd.as_raw_fd() as c_int,
+                                            page_min as usize) };
+
+        if map_start == MAP_FAILED {
+
+            Err (format!("<dryad> Error: mmap failed for {:#?} with errno {}, aborting", fd, super::get_errno()))
+
+        } else {
+
+            let data = (map_start + page::page_offset(offset)) as *const u64;
+            Ok ((map_start, map_size, data))
+        }
     }
 
 }

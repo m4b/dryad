@@ -81,7 +81,7 @@ impl<'process> SharedObject<'process> {
         let header = &*(ptr as *const Header);
         let phdrs = ProgramHeader::from_raw_parts((header.e_phoff + ptr) as *const ProgramHeader, header.e_phnum as usize);
         let load_bias = compute_load_bias_wrapping(ptr, &phdrs);
-        let dynamic = dyn::get_dynamic_array(load_bias as u64, phdrs).unwrap();
+        let dynamic = dyn::from_phdrs(load_bias as u64, phdrs).unwrap();
         let link_info = dyn::LinkInfo::new(&dynamic, load_bias);
         let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM;
         let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
@@ -89,7 +89,8 @@ impl<'process> SharedObject<'process> {
         let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
         let relatab = rela::from_raw(link_info.rela as *const rela::Rela, link_info.relasz);
         let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);
-        let gnu_hash = if link_info.gnu_hash == 0 { None } else { Some (GnuHash::new(link_info.gnu_hash as *const u32, symtab.len())) };
+        let pltgot = if let Some(addr) = link_info.pltgot { addr } else { 0 };
+        let gnu_hash = if let Some(addr) = link_info.gnu_hash { Some (GnuHash::new(addr as *const u32, symtab.len())) } else { None };
         SharedObject {
             name: strtab.get(link_info.soname),
             load_bias: ptr,
@@ -102,7 +103,7 @@ impl<'process> SharedObject<'process> {
             strtab: strtab,
             relatab: relatab,
             pltrelatab: pltrelatab,
-            pltgot: link_info.pltgot as *const u64,
+            pltgot: pltgot as *const u64,
             gnu_hash: gnu_hash,
             load_path: None,
         }
@@ -124,7 +125,7 @@ impl<'process> SharedObject<'process> {
             }
             // if base == 0 then no PT_PHDR and we should terminate? or kernel should have noticed this and we needn't bother
 
-            if let Some(dynamic) = dyn::get_dynamic_array(load_bias, phdrs) {
+            if let Some(dynamic) = dyn::from_phdrs(load_bias, phdrs) {
 
                 let link_info = dyn::LinkInfo::new(dynamic, load_bias as usize);
                 // TODO: swap out the link_info syment with compile time constant SIZEOF_SYM?
@@ -135,8 +136,9 @@ impl<'process> SharedObject<'process> {
                 let relatab = rela::from_raw(link_info.rela as *const rela::Rela, link_info.relasz);
                 let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);
 
-                let pltgot = link_info.pltgot as *const u64;
-                let gnu_hash = if link_info.gnu_hash == 0 { None } else { Some (GnuHash::new(link_info.gnu_hash as *const u32, symtab.len())) };
+                // TODO: fail with Err, not panic
+                let pltgot = link_info.pltgot.expect("<dryad> Error executable has no pltgot, aborting") as *const u64;
+                let gnu_hash = if let Some(addr) = link_info.gnu_hash { Some (GnuHash::new(addr as *const u32, symtab.len())) } else { None };
                 Ok (SharedObject {
                     name: name,
                     load_bias: load_bias,
