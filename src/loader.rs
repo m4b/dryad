@@ -2,12 +2,8 @@
 /// TODO: fix the high address mapperr for `__libc_start_main`
 
 use std::fs::File;
-use std::io::Read;
-//use std::io::Seek;
-//use std::io::SeekFrom::{ Start };
 use std::os::unix::io::AsRawFd;
 use std::slice;
-//use std::mem;
 use std::os::raw::{c_int};
 
 use utils::mmap;
@@ -152,29 +148,20 @@ fn pflags_to_prot (x: u32) -> isize {
 // 1. program headers not being mmap'd in expected location
 // 2. dynamic array + strtab's not being in expected location w.r.t. program headers
 /// Loads an ELF binary from the given fd, mmaps its contents, and returns a SharedObject, whose lifetime is tied to the mmap's, i.e., manually managed
-/// TODO: refactor this code so as much as possible is independent of an `File` parameter
 /// TODO: probably just move this function to image and use it as the impl
 pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) -> Result <SharedObject<'a>, String> {
     // 1. Suck up the elf header and construct the program headers
-    let mut elf_header = [0; header::EHDR_SIZE];
-    let _ = fd.read(&mut elf_header);
-
-    let elf_header = header::Header::from_bytes(&elf_header);
-    // TODO: phdr should be mmapped and not copied?
-    let mut phdrs: Vec<u8> = vec![0; (elf_header.e_phnum as u64 * program_header::PHDR_SIZE) as usize];
-    let _ = fd.read(&mut phdrs);
-    // TODO: ditto, experiment with mmap vs malloc'ing into memory and using vecs
-    // TODO: replace with the mmap'd version or see if we can just forget about program headers being stored altogether
-    let phdrs = unsafe { slice::from_raw_parts(phdrs.as_ptr() as *const program_header::ProgramHeader, elf_header.e_phnum as usize) } ;
+    let ehdr = header::Header::from_fd(fd).map_err(|e| format!("<dryad> Error {:?}", e))?;
+    let phdrs = program_header::ProgramHeader::from_fd(fd, ehdr.e_phoff, ehdr.e_phnum as usize).map_err(|e| format!("<dryad> Error {:?}", e))?;
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias, end) = try!(reserve_address_space(&phdrs));
-    if debug { println!("<loader> reserved {:#x} - {:#x}", start, end); }
+    if debug { println!("<loader> reserved {:#x} - {:#x} with load_bias: 0x{:x}", start, end, load_bias); }
 
     // TODO: swap location of this after the load bias computation so we can construct the LinkInfo with the load bias and not worry about other nonsense
     // 1.5 mmap the dynamic array with the strtab so we can access them and resolve symbol lookups against this library; this will require mmapping the segments, and storing the dynamic array, along with the strtab; TODO: benchmark against sucking them up ourselves into memory and resolve queries against that way -- probably slower...
 
-    let dynamic = try!(mmap_dynamic(soname, &fd, phdrs));
+    let dynamic = try!(mmap_dynamic(soname, &fd, &phdrs));
     let link_info = dyn::LinkInfo::new(&dynamic, 0);
 
     // now get the strtab from the dynamic array
@@ -272,7 +259,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
         map_end: end,
         // TODO: if we do not mmap the phdrs they come back broken and garbled since they get dropped by the compiler, as the slice's backing vec is de-alloc'd after this scope ends
         // not important since we don't use (and we might be able to just drop the phdrs completely since they shouldn't need to be used by the linking process
-        phdrs: phdrs,
+        phdrs: &[], // TODO: re-add program headers to this struct?
         dynamic: dynamic,
         symtab: symtab,
         strtab: strtab,
