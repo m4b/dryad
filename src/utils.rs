@@ -31,17 +31,26 @@ macro_rules! dbg {
 
 #[macro_export]
 macro_rules! dbgc {
-    ($c:ident: $dbg:expr, $prefix:expr, $fmt:expr, $($arg:tt)*) =>
-        (if $dbg {
-        ( print!(
-            concat!(
+    ($c:ident: $dbg:expr, $prefix:expr, $fmt:expr) =>
+        ( if $dbg {
+            ( print!(
                 concat!(
-                    colorify!($c: concat!($prefix, " ")),
-                    $fmt),
-                "\n"),
-            $($arg)*) );
-        });
+                    concat!(
+                        colorify!($c: concat!($prefix, " ")),
+                        $fmt),
+                    "\n")));
+        } );
 
+    ($c:ident: $dbg:expr, $prefix:expr, $fmt:expr, $($arg:tt)*) =>
+        ( if $dbg {
+            ( print!(
+                concat!(
+                    concat!(
+                        colorify!($c: concat!($prefix, " ")),
+                        $fmt),
+                    "\n"),
+                $($arg)*) );
+        } );
 }
 
 // TODO: make this a mod like asm::
@@ -253,7 +262,7 @@ pub fn get_errno () -> i32 {
 /// **NB**: Make sure this is called _after_ relocation, since we need to allocate the closure on the heap
 pub fn set_panic () {
     ::std::panic::set_hook(Box::new(|panic| {
-        println!(r#"<dryad> "Thamus, are you there? When you reach Palodes, take care to proclaim that the great god Pan is dead."#);
+        dbgc!(orange_bold: true, "<dryad>", r#"Thamus, are you there? When you reach Palodes, take care to proclaim that the great god Pan is dead."#);
         if let Some(location) = panic.location() {
             println!("-=|dryad====- died in {}:{}", location.file(), location.line());
         }
@@ -266,7 +275,7 @@ pub fn set_panic () {
                 None => "Box<Any>",
             }
         };
-        println!("<dryad> Died because {}", msg);
+        dbgc!(orange_bold: true, "<dryad>", "Died because {}", msg);
         _exit(1);
     }));
 }
