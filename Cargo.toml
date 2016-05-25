@@ -10,11 +10,4 @@ gcc = "0.3"
 [dependencies]
 crossbeam = "0.2.9"
 goblin = {git = "http://github.com/m4b/goblin"}
-
-#[lib]
-#crate-type = ["dylib"]
-
-# some attempts at getting cargo to run ...
-#RUSTC=musldist/bin/rustc cargo rustc --release --verbose --lib --target=x86_64-unknown-linux-musl -- -C prefer-dynamic -C link-args="-Wl,--gc-sections,-I/tmp/dryad.so.1,--entry=_start,-nostdlib,-pie"
-
-#RUSTC=musldist/bin/rustc cargo rustc --release --target=x86_64-unknown-linux-gnu -- -C prefer-dynamic -C link-args="-Wl,--gc-sections,-I/tmp/dryad.so.1,--entry=_start,-nostdlib,-pie" -L musldist/lib/rustlib/x86_64-unknown-linux-musl/lib -l std-db5a760f.r -l core-db5a760f.r -l rand-db5a760f.r -l alloc-db5a760f.r -l collections-db5a760f.r -l rustc_unicode-db5a760f.r -l alloc_system-db5a760f.r -l resolv.a -l unwind.a -l m.a -l c.a
+colorify = "0.2.2"

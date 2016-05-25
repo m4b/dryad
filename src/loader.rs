@@ -5,9 +5,7 @@ use std::fs::File;
 use std::os::unix::io::AsRawFd;
 use std::os::raw::{c_int};
 
-use utils::mmap;
-use utils::page;
-use utils;
+use utils::{self, mmap, page};
 use image::SharedObject;
 use binary::elf::header;
 use binary::elf::program_header;
@@ -94,7 +92,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias, end) = reserve_address_space(&phdrs)?;
-    if debug { println!("<loader> reserved {:#x} - {:#x} with load_bias: 0x{:x}", start, end, load_bias); }
+    dbgc!(red_bold: debug, "<loader>", "reserved {:#x} - {:#x} with load_bias: 0x{:x}", start, end, load_bias);
 
     // 3. Now we iterate through the phdrs, and
     // a. mmap the PT_LOAD program headers
@@ -132,7 +130,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
 
                 // TODO: add error checking, if file size <= 0, if file_end greater than file_size, etc.
 
-                if debug { println!("<loader> PT_LOAD:\n\tseg_start: {:x} seg_end: {:x} seg_page_start: {:x} seg_page_end: {:x} seg_file_end: {:x}\n\tfile_start: {:x} file_end: {:x} file_page_start: {:x} file_length: {:x}", seg_start, seg_end, seg_page_start, seg_page_end, seg_file_end, file_start, file_end, file_page_start, file_length); }
+                dbgc!(red_bold: debug, "<loader>", "PT_LOAD:\n\tseg_start: {:x} seg_end: {:x} seg_page_start: {:x} seg_page_end: {:x} seg_file_end: {:x}\n\tfile_start: {:x} file_end: {:x} file_page_start: {:x} file_length: {:x}", seg_start, seg_end, seg_page_start, seg_page_end, seg_file_end, file_start, file_end, file_page_start, file_length);
 
                 if file_length != 0 {
                     let mmap_flags = mmap::MAP_FIXED | mmap::MAP_PRIVATE;

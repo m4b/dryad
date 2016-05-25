@@ -9,12 +9,13 @@
 /// TODO: add support for invoking ./dryad <binary> <args>
 
 pub extern crate goblin;
+#[macro_use] extern crate colorify;
 
 pub use goblin as binary;
 
 mod auxv;
 mod kernel_block;
-mod utils;
+#[macro_use] mod utils;
 mod image;
 mod loader;
 mod tls;

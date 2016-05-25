@@ -4,6 +4,46 @@
 use std::str;
 use std::slice;
 
+#[macro_export]
+macro_rules! dbg {
+    ($dbg:expr, $fmt:expr) =>
+        (if $dbg {
+        ( print!(
+            concat!(
+                concat!(
+                    colorify!(green: "<dryad> "),
+                    $fmt),
+                "\n")));
+
+        });
+    ($dbg:expr, $fmt:expr, $($arg:tt)*) =>
+        (if $dbg {
+        ( print!(
+            concat!(
+                concat!(
+                    colorify!(green: "<dryad> "),
+                    $fmt),
+                "\n"),
+            $($arg)*) );
+        });
+
+}
+
+#[macro_export]
+macro_rules! dbgc {
+    ($c:ident: $dbg:expr, $prefix:expr, $fmt:expr, $($arg:tt)*) =>
+        (if $dbg {
+        ( print!(
+            concat!(
+                concat!(
+                    colorify!($c: concat!($prefix, " ")),
+                    $fmt),
+                "\n"),
+            $($arg)*) );
+        });
+
+}
+
 // TODO: make this a mod like asm::
 
 #[no_mangle]
