@@ -52,8 +52,8 @@ pub unsafe fn compute_load_bias_wrapping(base: u64, phdrs:&[ProgramHeader]) -> u
 /// 3. the executable we're interpreting
 pub struct SharedObject<'process> {
     pub name: &'process str,
-    pub load_bias: u64, // TODO: change this to addr or base_addr load_bias is stupid
-    pub map_begin: u64,
+    pub load_bias: u64, // TODO: change to usize change this to addr or base_addr load_bias is stupid
+    pub map_begin: u64, // probably remove these?
     pub map_end: u64,
     pub libs: Vec<&'process str>,
     pub phdrs: &'process[ProgramHeader],
@@ -65,12 +65,14 @@ pub struct SharedObject<'process> {
     pub pltgot: *const u64,
     pub gnu_hash: Option<GnuHash<'process>>,
     pub load_path: Option<String>,
+    pub flags: u64,
+    pub state_flags: u64,
 }
 
 impl<'process> fmt::Debug for SharedObject<'process> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "name: {} load_bias: {:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Rela Table: {:#?}\n  Plt Rela Table: {:#?}\n  Libraries: {:#?}",
-               self.name, self.load_bias, self.phdrs, self.dynamic, self.strtab, self.symtab, self.relatab, self.pltrelatab, self.libs)
+        write!(f, "name: {} load_bias: {:x} DT_FLAGS: 0x{:x} DT_FLAGS_1 0x{:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Rela Table: {:#?}\n  Plt Rela Table: {:#?}\n  Libraries: {:#?}\n",
+               self.name, self.load_bias, self.flags, self.state_flags, self.phdrs, self.dynamic, self.strtab, self.symtab, self.relatab, self.pltrelatab, self.libs)
     }
 }
 
@@ -106,7 +108,10 @@ impl<'process> SharedObject<'process> {
             pltgot: pltgot as *const u64,
             gnu_hash: gnu_hash,
             load_path: None,
+            flags: link_info.flags,
+            state_flags: link_info.flags_1,
         }
+
     }
 
     pub fn from_executable (name: &'static str, phdr_addr: u64, phnum: usize) -> Result<SharedObject<'process>, String> {
@@ -153,7 +158,9 @@ impl<'process> SharedObject<'process> {
                     pltrelatab: pltrelatab,
                     pltgot: pltgot,
                     gnu_hash: gnu_hash,
-                    load_path: Some (name.to_string()), // TODO: make absolute?
+                    load_path: Some (name.to_string()), // TODO: make absolute?,
+                    flags: link_info.flags,
+                    state_flags: link_info.flags_1,
                 })
 
             } else {

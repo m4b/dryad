@@ -224,6 +224,8 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
         pltgot: pltgot as *const u64,
         gnu_hash: gnu_hash,
         load_path: Some (load_path),
+        flags: link_info.flags,
+        state_flags: link_info.flags_1,
     };
 
     Ok (shared_object)

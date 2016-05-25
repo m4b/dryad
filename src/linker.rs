@@ -235,6 +235,8 @@ impl<'process> Linker<'process> {
                 link_map_order.push(vdso.name.to_string());
                 working_set.insert(vdso.name.to_string(), vdso);
 
+                utils::set_panic();
+
                 Ok (Linker {
                     base: base,
                     load_bias: load_bias,

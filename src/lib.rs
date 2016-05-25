@@ -1,5 +1,5 @@
 //#![crate_type="dylib"]
-#![feature(asm, libc, question_mark)]
+#![feature(asm, libc, question_mark, panic_handler)]
 
 #![allow(dead_code)] // yells about consts otherwise
 #![allow(unused_variables)]
@@ -48,6 +48,7 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
     let start_addr = _start as *const u64 as u64;    
     // TODO: add support for invoking ./dryad <binary> <args>
     if start_addr == entry {
+        utils::set_panic();
         // because it's _tradition_
         // (https://fossies.org/dox/glibc-2.22/rtld_8c_source.html)
         // line 786:

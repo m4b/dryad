@@ -209,6 +209,28 @@ pub fn get_errno () -> i32 {
     unsafe { *__errno_location() }
 }
 
+/// We're required to set the rust panic hook/handler because otherwise we segfault in `static_dl_iterate_phdr` when libstd tries to unwind the stack
+/// **NB**: Make sure this is called _after_ relocation, since we need to allocate the closure on the heap
+pub fn set_panic () {
+    ::std::panic::set_hook(Box::new(|panic| {
+        println!(r#"<dryad> "Thamus, are you there? When you reach Palodes, take care to proclaim that the great god Pan is dead."#);
+        if let Some(location) = panic.location() {
+            println!("-=|dryad====- died in {}:{}", location.file(), location.line());
+        }
+        let payload = panic.payload ();
+        // pretty much copied from libstd's panicking default, cause it's pretty
+        let msg = match payload.downcast_ref::<&'static str>() {
+            Some(s) => s,
+            None => match payload.downcast_ref::<String>() {
+                Some(s) => &s[..],
+                None => "Box<Any>",
+            }
+        };
+        println!("<dryad> Died because {}", msg);
+        _exit(1);
+    }));
+}
+
 pub mod page {
    // from <sys/user.h>
     pub const PAGE_SHIFT: u64    = 12;
