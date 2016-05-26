@@ -504,7 +504,7 @@ impl<'process> Linker<'process> {
     #[no_mangle]
     pub fn link(mut self, block: &kernel_block::KernelBlock) -> Result<(), String> {
 
-        //if self.config.debug { println!("Dryad:\n  {:#?}", &self); }
+//        dbg!(self.config.debug, "I am that I am:\n  {:#?}", &self);
         /*
         let array = [1, 2, 3];
         crossbeam::scope(|scope| {
