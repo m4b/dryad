@@ -4,6 +4,8 @@ RUSTLIB=$(LIB)/rustlib/x86_64-unknown-linux-musl/lib
 HASH=$(shell ls $(RUSTLIB) | grep libstd | grep -oe "-[[:alnum:]]*" | grep -oe "[[:alnum:]]*")
 RUSTHASH=$(strip $(HASH))
 
+# uncomment to remove color from dryad :(
+#COLOR=--features "no_color"
 ETC=etc
 SRC=$(wildcard src/*)
 OUT_DIR=target/x86_64-unknown-linux-musl/debug
@@ -29,7 +31,7 @@ dryad.so.1: $(OUT_DIR)/libdryad.rlib
 
 $(OUT_DIR)/libdryad.rlib: $(SRC)
 	@printf "\33[0;4;33mcompiling:\33[0m \33[1;32mdryad\33[0m\n"
-	$(CARGO) rustc --verbose --target=x86_64-unknown-linux-musl --lib -j 4 -- -C panic=abort
+	$(CARGO) rustc $(COLOR) --verbose --target=x86_64-unknown-linux-musl --lib -j 4
 
 #almost... but cargo/rustc refuses to compile dylibs with a musl target
 #link-args="-Wl,-pie,-I${PT_INTERP},-soname ${SONAME}, --gc-sections, -L${LIB}, -Bsymbolic, -nostdlib, -e _start, -o ${SONAME}, start.o, dryad.o, ${RUSTLIB}/libstd-${RUSTHASH}.rlib, ${RUSTLIB}/libcore-${RUSTHASH}.rlib, ${RUSTLIB}/librand-${RUSTHASH}.rlib, ${RUSTLIB}/liballoc-${RUSTHASH}.rlib, ${RUSTLIB}/libcollections-${RUSTHASH}.rlib, ${RUSTLIB}/librustc_unicode-${RUSTHASH}.rlib, ${RUSTLIB}/liballoc_system-${RUSTHASH}.rlib, ${RUSTLIB}/libcompiler-rt.a, ${RUSTLIB}/liblibc-${RUSTHASH}.rlib, ${CARGO_DEPS}"

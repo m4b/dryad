@@ -92,7 +92,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias, end) = reserve_address_space(&phdrs)?;
-    dbgc!(red_bold: debug, "<loader>", "reserved {:#x} - {:#x} with load_bias: 0x{:x}", start, end, load_bias);
+    dbgc!(red_bold: debug, "loader", "reserved {:#x} - {:#x} with load_bias: 0x{:x}", start, end, load_bias);
 
     // 3. Now we iterate through the phdrs, and
     // a. mmap the PT_LOAD program headers
@@ -130,7 +130,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
 
                 // TODO: add error checking, if file size <= 0, if file_end greater than file_size, etc.
 
-                dbgc!(red_bold: debug, "<loader>", "PT_LOAD:\n\tseg_start: {:x} seg_end: {:x} seg_page_start: {:x} seg_page_end: {:x} seg_file_end: {:x}\n\tfile_start: {:x} file_end: {:x} file_page_start: {:x} file_length: {:x}", seg_start, seg_end, seg_page_start, seg_page_end, seg_file_end, file_start, file_end, file_page_start, file_length);
+                dbgc!(red_bold: debug, "loader", "PT_LOAD:\n\tseg_start: {:x} seg_end: {:x} seg_page_start: {:x} seg_page_end: {:x} seg_file_end: {:x}\n\tfile_start: {:x} file_end: {:x} file_page_start: {:x} file_length: {:x}", seg_start, seg_end, seg_page_start, seg_page_end, seg_file_end, file_start, file_end, file_page_start, file_length);
 
                 if file_length != 0 {
                     let mmap_flags = mmap::MAP_FIXED | mmap::MAP_PRIVATE;
@@ -145,7 +145,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
 
                         if start == mmap::MAP_FAILED {
 
-                            return Err(format!("<loader> loading phdrs for {} failed with errno {}, aborting execution", &soname, utils::get_errno()))
+                            return Err(format!("loader loading phdrs for {} failed with errno {}, aborting execution", &soname, utils::get_errno()))
                         }
                     }
 
@@ -166,7 +166,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     }
 
     if !has_pt_load {
-        return Err(format!("<loader> {} has no PT_LOAD sections", soname));
+        return Err(format!("loader {} has no PT_LOAD sections", soname));
     }
 
     ///////////////
@@ -179,7 +179,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     let phdrs = unsafe { program_header::ProgramHeader::from_raw_parts((phdrs_vaddr + load_bias) as *const program_header::ProgramHeader, phdrs.len()) };
 
     // construct the dynamic slice in whatever mmap'd PT_LOAD it's in
-    let dynamic_vaddr = dynamic_vaddr.ok_or(format!("<loader> {} has no dynamic array", soname))?;
+    let dynamic_vaddr = dynamic_vaddr.ok_or(format!("loader {} has no dynamic array", soname))?;
     let dynamic = unsafe { dyn::from_raw(load_bias, dynamic_vaddr) };
 
     // build the link info with the bias and the dynamic array

@@ -4,54 +4,52 @@
 use std::str;
 use std::slice;
 
-#[macro_export]
+#[cfg(not(feature = "no_color"))]
+macro_rules! colour {
+    ($c:ident: $str:expr) =>
+    (colorify!($c: $str))
+}
+
+#[cfg(feature = "no_color")]
+macro_rules! colour {
+    ($c:ident: $str:expr) =>
+        ($str)
+}
+
+macro_rules! bracket {
+    ($c:ident: $str:expr) =>
+       ( concat!(colour!(white_bold2: "<"), colour!($c: $str), colour!(white_bold2: ">")) )
+}
+
 macro_rules! dbg {
     ($dbg:expr, $fmt:expr) =>
         (if $dbg {
         ( print!(
-            concat!(
-                concat!(
-                    colorify!(green: "<dryad> "),
-                    $fmt),
-                "\n")));
-
+            concat!(bracket!(green: "dryad"), " ", $fmt, "\n")))
         });
     ($dbg:expr, $fmt:expr, $($arg:tt)*) =>
         (if $dbg {
         ( print!(
-            concat!(
-                concat!(
-                    colorify!(green: "<dryad> "),
-                    $fmt),
-                "\n"),
+            concat!(bracket!(green: "dryad"), " ", $fmt, "\n"),
             $($arg)*) );
         });
-
 }
 
-#[macro_export]
 macro_rules! dbgc {
     ($c:ident: $dbg:expr, $prefix:expr, $fmt:expr) =>
         ( if $dbg {
             ( print!(
-                concat!(
-                    concat!(
-                        colorify!($c: concat!($prefix, " ")),
-                        $fmt),
-                    "\n")));
-        } );
+                concat!(bracket!($c: $prefix), " ", $fmt, "\n")) )
+        });
 
     ($c:ident: $dbg:expr, $prefix:expr, $fmt:expr, $($arg:tt)*) =>
         ( if $dbg {
             ( print!(
-                concat!(
-                    concat!(
-                        colorify!($c: concat!($prefix, " ")),
-                        $fmt),
-                    "\n"),
+                concat!(bracket!($c: $prefix), " ", $fmt, "\n"),
                 $($arg)*) );
         } );
 }
+
 
 // TODO: make this a mod like asm::
 

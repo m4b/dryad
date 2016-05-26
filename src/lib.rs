@@ -6,17 +6,18 @@
 
 /// Dryad --- the world's first non-functional, yet-to-be-implemented, might be impossible or more likely inefficient --- parallel, dynamic linker.
 /// Many, many thanks to Mutabah, durka42, aatch, tilpner, niconii, bluss, steveklabnik, ubsan and so many others on the IRC channel for answering my stupid questions.
-/// TODO: add support for invoking ./dryad <binary> <args>
 
-pub extern crate goblin;
+#[cfg(not(feature = "no_color"))]
 #[macro_use] extern crate colorify;
 
+pub extern crate goblin;
 pub use goblin as binary;
 
 mod auxv;
 mod kernel_block;
 #[macro_use] mod utils;
 mod image;
+
 mod loader;
 mod tls;
 pub mod runtime;
