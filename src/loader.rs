@@ -56,7 +56,7 @@ fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u
 
     if start == mmap::MAP_FAILED {
 
-        Err (format!("<dryad> Failure: anonymous mmap failed for size {:x} with errno {}", size, utils::get_errno()))
+        Err (format!("Error: anonymous mmap failed for size {:x} with errno {}", size, utils::get_errno()))
 
     } else {
 
@@ -87,8 +87,8 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     ///////////////
 
     // 1. Suck up the elf header on disk and construct the program headers
-    let ehdr = header::Header::from_fd(fd).map_err(|e| format!("<dryad> Error {:?}", e))?;
-    let phdrs = program_header::ProgramHeader::from_fd(fd, ehdr.e_phoff, ehdr.e_phnum as usize).map_err(|e| format!("<dryad> Error {:?}", e))?;
+    let ehdr = header::Header::from_fd(fd).map_err(|e| format!("Error {:?}", e))?;
+    let phdrs = program_header::ProgramHeader::from_fd(fd, ehdr.e_phoff, ehdr.e_phnum as usize).map_err(|e| format!("Error {:?}", e))?;
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias, end) = reserve_address_space(&phdrs)?;

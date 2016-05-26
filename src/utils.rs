@@ -1,6 +1,3 @@
-// leave this to allow easy breakpoints on assembly wrappers like _write for now
-#![allow(private_no_mangle_fns)]
-
 use std::str;
 use std::slice;
 
@@ -51,10 +48,7 @@ macro_rules! dbgc {
 }
 
 
-// TODO: make this a mod like asm::
-
-#[no_mangle]
-pub extern fn _exit(code: u64) {
+pub fn _exit(code: u64) {
     unsafe {
         asm!("movq $$60, %rax
               syscall"
@@ -64,26 +58,26 @@ pub extern fn _exit(code: u64) {
     }
 }
 
-// this comes from asm.s
-extern {
-    pub fn _print(msg: *const u8, len: u64);
-}
-
-/*
-fn _print(msg: *const u8, len: u64) {
+fn asm_write(msg: *const u8, len: u64){
     unsafe {
-        let slice = slice::from_raw_parts(msg, len as usize);
-        println!("{:?}", &slice);
+        asm!("\
+              mov %rsi, %rdx
+              mov %rdi, %rsi
+              movq $$1, %rax
+              movq $$1, %rdi
+              syscall
+              "
+             :
+             :"{rdi}"(msg), "{rsi}"(len)
+             : "rdi","rax", "rdx", "rsi"
+             : "alignstack", "volatile"
+             );
     }
 }
-*/
 
-
-#[no_mangle]
-pub unsafe extern fn write(msg: &str){
-    _print(msg.as_ptr(), msg.len() as u64);
+pub fn write(msg: &str){
+    asm_write(msg.as_ptr(), msg.len() as u64);
 }
-
 
 fn digit_to_char_code(i: u8) -> u8 {
     if i <= 9 {
@@ -115,8 +109,7 @@ fn num_digits_t() {
     assert_eq!(num_digits(999), 3);
 }
 
-#[no_mangle]
-pub unsafe extern fn write_u64(i: u64, base16: bool) {
+pub fn write_u64(i: u64, base16: bool) {
     if base16 {
         write(to_hex(&i, &mut [0; 16]));
     } else {
@@ -286,7 +279,7 @@ pub mod mmap {
         let map_size: usize = (end_offset - page_min) as usize;
 
         if map_size < size {
-            return Err (format!("<dryad> Error: file {:#?} has map_size = {} < size = {}, aborting", fd, map_size, size))
+            return Err (format!("Error: file {:#?} has map_size = {} < size = {}, aborting", fd, map_size, size))
         }
 
         let map_start = unsafe { mmap(0 as *const u64,
@@ -298,7 +291,7 @@ pub mod mmap {
 
         if map_start == MAP_FAILED {
 
-            Err (format!("<dryad> Error: mmap failed for {:#?} with errno {}, aborting", fd, super::get_errno()))
+            Err (format!("Error: mmap failed for {:#?} with errno {}, aborting", fd, super::get_errno()))
 
         } else {
 

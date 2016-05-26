@@ -142,7 +142,7 @@ impl<'process> SharedObject<'process> {
                 let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);
 
                 // TODO: fail with Err, not panic
-                let pltgot = link_info.pltgot.expect("<dryad> Error executable has no pltgot, aborting") as *const u64;
+                let pltgot = link_info.pltgot.expect("Error executable has no pltgot, aborting") as *const u64;
                 let gnu_hash = if let Some(addr) = link_info.gnu_hash { Some (GnuHash::new(addr as *const u32, symtab.len())) } else { None };
                 Ok (SharedObject {
                     name: name,
@@ -164,7 +164,7 @@ impl<'process> SharedObject<'process> {
                 })
 
             } else {
-                Err (format!("<dryad> Error: executable {} has no _DYNAMIC array", name))
+                Err (format!("Error: executable {} has no _DYNAMIC array", name))
             }
         }
     }

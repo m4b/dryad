@@ -254,7 +254,7 @@ impl<'process> Linker<'process> {
 
             } else {
 
-                Err ("<dryad> SEVERE: no dynamic array found for dryad; exiting\n")
+                Err ("Error: no dynamic array found for dryad. Why? This should be impossible, and it means someone has tampered with my existence... will try to exit, unless they tampered with that too\n")
             }
         }
     }
@@ -489,7 +489,7 @@ impl<'process> Linker<'process> {
                 }
             }
             if !found {
-                return Err(format!("<dryad> could not find {} in {:?}", &soname, self.config.library_path))
+                return Err(format!("Error: could not find {} in {:?}", &soname, self.config.library_path))
             }
         }
 

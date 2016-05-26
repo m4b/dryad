@@ -96,17 +96,3 @@ _dryad_resolve_symbol:
 	add    $0x18,%rsp
 	jmpq *%r11
 	nopl   0x0(%rax)
-	
-	.text
-        .globl _print
-        .type _print, @function
-_print:
-        push %rbp
-        mov %rsp, %rbp
-        mov %rsi, %rdx
-        mov %rdi, %rsi
-        mov $1, %rax
-        mov $1, %rdi
-        syscall
-        pop %rbp
-        retq

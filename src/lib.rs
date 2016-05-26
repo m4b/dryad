@@ -48,7 +48,6 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
     let entry  = block.getauxval(auxv::AT_ENTRY).unwrap();
 
     let start_addr = _start as *const u64 as u64;    
-    // TODO: add support for invoking ./dryad <binary> <args>
     if start_addr == entry {
         utils::set_panic();
         // because it's _tradition_
@@ -61,7 +60,7 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
             if block.argc >= 2 {
                 let binary = str_at(block.argv[1], 0);
                 println!("binary: {:?}", binary);
-                let elf = binary::elf::Elf::from_path(::std::path::Path::new(binary)).expect(&format!("<dryad> Cannot load binary {}", binary));
+                let elf = binary::elf::Elf::from_path(::std::path::Path::new(binary)).expect(&format!("Cannot load binary {}", binary));
                 println!("{:#?}", elf);
                 0
             } else {
@@ -85,7 +84,7 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
         },
         Err (msg) => {
             // relocating self failed somehow; we try to write the error message and exit
-            unsafe { write(&msg); }
+            write(&msg);
             _exit(1);
             0xd47ad
         }
