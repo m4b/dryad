@@ -145,7 +145,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
 
                         if start == mmap::MAP_FAILED {
 
-                            return Err(format!("loader loading phdrs for {} failed with errno {}, aborting execution", &soname, utils::get_errno()))
+                            return Err(format!("Error: loader loading phdrs for {} failed with errno {}, aborting execution", &soname, utils::get_errno()))
                         }
                     }
 
@@ -166,7 +166,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     }
 
     if !has_pt_load {
-        return Err(format!("loader {} has no PT_LOAD sections", soname));
+        return Err(format!("Error: loader {} has no PT_LOAD sections", soname));
     }
 
     ///////////////
@@ -179,7 +179,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     let phdrs = unsafe { program_header::ProgramHeader::from_raw_parts((phdrs_vaddr + load_bias) as *const program_header::ProgramHeader, phdrs.len()) };
 
     // construct the dynamic slice in whatever mmap'd PT_LOAD it's in
-    let dynamic_vaddr = dynamic_vaddr.ok_or(format!("loader {} has no dynamic array", soname))?;
+    let dynamic_vaddr = dynamic_vaddr.ok_or(format!("Error: loader {} has no dynamic array", soname))?;
     let dynamic = unsafe { dyn::from_raw(load_bias, dynamic_vaddr) };
 
     // build the link info with the bias and the dynamic array
