@@ -260,7 +260,7 @@ pub fn get_errno () -> i32 {
 /// **NB**: Make sure this is called _after_ relocation, since we need to allocate the closure on the heap
 pub fn set_panic () {
     ::std::panic::set_hook(Box::new(|panic| {
-        dbgc!(orange_bold: true, "<dryad_panic>", r#"Thamus, are you there? When you reach Palodes, take care to proclaim that the great god Pan is dead."#);
+        dbgc!(orange_bold: true, "dryad.panic", r#"Thamus, are you there? When you reach Palodes, take care to proclaim that the great god Pan is dead."#);
         if let Some(location) = panic.location() {
             println!("-=|dryad====- died in {}:{}", location.file(), location.line());
         }
@@ -273,7 +273,7 @@ pub fn set_panic () {
                 None => "Box<Any>",
             }
         };
-        dbgc!(orange_bold: true, "<dryad_dryad>", "Died because {}", msg);
+        dbgc!(orange_bold: true, "dryad.panic", "Died because {}", msg);
         _exit(1);
     }));
 }

@@ -206,7 +206,6 @@ impl<'process> Linker<'process> {
             let addr = (base + ehdr.e_phoff) as *const program_header::ProgramHeader;
             let phdrs = ProgramHeader::from_raw_parts(addr, ehdr.e_phnum as usize);
             let load_bias = image::compute_load_bias_wrapping(base, &phdrs) as u64;
-            let vdso_addr = block.getauxval(auxv::AT_SYSINFO_EHDR).unwrap();
             if let Some(dynamic) = dyn::from_phdrs(load_bias, &phdrs) {
 
                 let relocations = get_linker_relocations(load_bias, &dynamic);
@@ -222,20 +221,22 @@ impl<'process> Linker<'process> {
                  */
 
                 // we relocated ourselves so it should be safe to init the gdb debug protocols, use global data, reference static strings, call sweet functions, etc.
+                utils::set_panic(); // set this as early as we can
                 let gdb = &mut gdb::_r_debug;
                 gdb.relocated_init(base);
                 gdb.r_map = Box::into_raw(Box::new(gdb::LinkMap::new(base, "/tmp/dryad.so.1", dynamic)));
 
                 let config = Config::new(&block);
                 let mut working_set = Box::new(HashMap::new());
-                let vdso = SharedObject::from_raw(vdso_addr);
-                dbg!(config.debug, "vdso: {:#?}", vdso);
                 let mut link_map_order = Vec::new();
                 let link_map = Vec::new();
-                link_map_order.push(vdso.name.to_string());
-                working_set.insert(vdso.name.to_string(), vdso);
 
-                utils::set_panic();
+                if let Some(vdso_addr) = block.getauxval(auxv::AT_SYSINFO_EHDR) {
+                    let vdso = SharedObject::from_raw(vdso_addr);
+                    dbg!(config.debug, "loaded vdso: {}", vdso.name);
+                    link_map_order.push(vdso.name.to_string());
+                    working_set.insert(vdso.name.to_string(), vdso);
+                };
 
                 Ok (Linker {
                     base: base,
@@ -418,7 +419,7 @@ impl<'process> Linker<'process> {
                         unsafe { *reloc = symbol_address; }
                         count += 1;
                     } else {
-                        dbg!(self.config.debug, "Warning, no resolution for {}", name);
+                        dbgc!(orange_bold: self.config.debug, "dryad.warning", "no resolution for {}", name);
                     }
                 },
                 // fun @ (B + A)()
@@ -516,7 +517,7 @@ impl<'process> Linker<'process> {
         */
 
         // build executable
-        if self.config.debug { println!("BEGIN EXE LINKING"); }
+        dbgc!(red: self.config.debug, "dryad", "loading executable");
         let name = utils::as_str(block.argv[0]);
         let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
         let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
@@ -526,7 +527,7 @@ impl<'process> Linker<'process> {
         // this is unsafe because we use pointers because I don't feel like changing every borrowed reference for the dynamic array to a mutable borrow for one single time for the whole program duration that the _DYNAMIC array ever gets mutated
         unsafe { gdb::insert_r_debug(image.dynamic); }
 
-        if self.config.debug { println!("Main Image:\n  {:#?}", &image); }
+        dbg!(self.config.debug, "Main Image:\n  {:#?}", &image);
 
         // 1. load all
 
