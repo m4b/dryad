@@ -85,50 +85,6 @@ pub unsafe extern fn write(msg: &str){
 }
 
 
-/*
-#[cfg(debug_assertions)]
-macro_rules! debug_write {
-    ($($t:tt)*) => {
-        unsafe {
-            write($($t)*)
-        }
-    }
-}
-
-#[cfg(not(debug_assertions))]
-macro_rules! debug_write {
-    ($($t:tt)*) => {
-    }
-}
-*/
-
-
-// this is _totally_ broken and is massively side-effectful and unpredicatable
-/*
-#[no_mangle]
-pub extern fn write(msg: &str) {
-    unsafe {
-        asm!("pushq %rdi
-              pushq %rax
-              pushq %rdx
-              pushq %rsi
-              movq $$1, %rax
-              movq $$2, %rdi
-              syscall
-              popq %rsi
-              popq %rdx
-              popq %rax
-              popq %rdi
-              "
-             :
-             : "{rsi}"(msg.as_ptr()), "{rdx}"(msg.len())
-//             : "{rdi}","{rax}", "{rdx}", "{rsi}"
-             //             :"{rsi}"(msg.as_ptr()), "{rdx}"(msg.len())
-             //
-             );
-    }
-}
-*/
 fn digit_to_char_code(i: u8) -> u8 {
     if i <= 9 {
         i + 48
@@ -206,23 +162,6 @@ fn to_hex<'a>(i: &u64, output: &'a mut[u8; 16]) -> &'a str {
     str::from_utf8(output).unwrap().trim_matches('\0')
 }
 
-pub fn as_str<'a>(cs: *const u8) -> &'a str {
-    if cs.is_null() {
-        ""
-    }else {
-        let mut i = 0;
-        unsafe {
-            let mut c = *cs;
-            while c != 0 {
-                i += 1;
-                c = *cs.offset(i);
-            }
-            let slice = slice::from_raw_parts(cs, i as usize);
-            str::from_utf8(slice).unwrap()
-        }
-    }
-}
-
 pub fn str_at<'a>(cs: *const u8, offset: isize) -> &'a str {
     if cs.is_null() {
         ""
@@ -239,11 +178,6 @@ pub fn str_at<'a>(cs: *const u8, offset: isize) -> &'a str {
             str::from_utf8(slice).unwrap()
         }
     }
-}
-
-
-pub unsafe extern fn write_chars_at(cs: *const u8) {
-    write(as_str(cs));
 }
 
 extern {

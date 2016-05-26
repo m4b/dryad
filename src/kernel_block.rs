@@ -31,7 +31,7 @@ impl<'b> KernelBlock<'b> {
 
     pub fn getenv<'a>(&self, name:&'static str) -> Option<&'a str> {
         for i in 0..self.envc - 1 {
-            let evar = as_str(self.env[i as usize]);
+            let evar = str_at(self.env[i as usize], 0);
             if evar.starts_with(name) { // perhaps add custom search to check if starts with, then if so, return the chars after the =, for linear return; but probably who cares
                 let idx = evar.find("=").unwrap() + 1; // this unwrap probably safe since it would mean the environment variable wasn't properly constructed
                 let (_, res) = evar.split_at(idx as usize);
@@ -66,17 +66,5 @@ impl<'b> KernelBlock<'b> {
                 auxv: auxv,
             }
         }
-    }
-
-    pub unsafe fn unsafe_print (&self) -> () {
-        write(&"argc: ");
-        write_u64(self.argc as u64, false);
-        write(&"\n");
-        write(&"argv[0]: ");
-        write_chars_at(self.argv[0]);
-        write(&"\n");
-        write(&"envc: ");
-        write_u64(self.envc as u64, false);
-        write(&"\n");
     }
 }

@@ -518,7 +518,7 @@ impl<'process> Linker<'process> {
 
         // build executable
         dbgc!(red: self.config.debug, "dryad", "loading executable");
-        let name = utils::as_str(block.argv[0]);
+        let name = utils::str_at(block.argv[0], 0);
         let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
         let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
         let image = try!(SharedObject::from_executable(name, phdr_addr, phnum as usize));
