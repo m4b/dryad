@@ -233,7 +233,7 @@ impl<'process> Linker<'process> {
 
                 if let Some(vdso_addr) = block.getauxval(auxv::AT_SYSINFO_EHDR) {
                     let vdso = SharedObject::from_raw(vdso_addr);
-                    dbg!(config.debug, "loaded vdso: {}", vdso.name);
+                    dbg!(config.debug, "loaded vdso {} at 0x{:x}", vdso.name, vdso.load_bias);
                     link_map_order.push(vdso.name.to_string());
                     working_set.insert(vdso.name.to_string(), vdso);
                 };
