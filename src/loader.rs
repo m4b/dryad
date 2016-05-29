@@ -101,6 +101,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     let mut phdrs_vaddr = 0;
     let mut dynamic_vaddr = None;
     let mut has_pt_load = false;
+    let (mut tls_blocksize, mut tls_align, mut tls_firstbyte_offset, mut tls_initimage_size, mut tls_initimage) = (0, 0, 0, 0, 0);
     for phdr in &phdrs {
 
         match phdr.p_type {
@@ -111,6 +112,15 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
 
             program_header::PT_DYNAMIC => {
                 dynamic_vaddr = Some(phdr.p_vaddr);
+            },
+
+            program_header::PT_TLS => {
+                tls_blocksize = phdr.p_memsz;
+                tls_align = phdr.p_align;
+                tls_firstbyte_offset = if phdr.p_align == 0 { phdr.p_align } else { phdr.p_vaddr & (phdr.p_align - 1) };
+                tls_initimage_size = phdr.p_filesz;
+                tls_initimage = phdr.p_vaddr;
+                // TODO: increment the global `_dl_next_tls_modid` and set tls_modid to this value
             },
 
             program_header::PT_LOAD => {

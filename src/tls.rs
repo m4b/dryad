@@ -44,3 +44,15 @@ pub struct __libc {
 extern {
     pub static mut __libc: __libc;
 }
+
+// example of tls init structure for libc
+/*
+l_tls_initimage = 0x7ffff7bb2788,
+l_tls_initimage_size = 16,
+l_tls_blocksize = 120,
+l_tls_align = 8,
+l_tls_firstbyte_offset = 0,
+l_tls_offset = 128,
+l_tls_modid = 2,
+l_tls_dtor_count = 0,
+*/
