@@ -198,7 +198,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     let dynamic = unsafe { dyn::from_raw(load_bias, dynamic_vaddr) };
 
     // build the link info with the bias and the dynamic array
-    let link_info = dyn::LinkInfo::new(&dynamic, load_bias as usize);
+    let link_info = dyn::DynamicInfo::new(&dynamic, load_bias as usize);
 
     // now get the strtab from the dynamic array
     let strtab = unsafe { Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz as usize) };

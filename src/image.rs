@@ -87,7 +87,7 @@ impl<'process> SharedObject<'process> {
         let phdrs = ProgramHeader::from_raw_parts((header.e_phoff + ptr) as *const ProgramHeader, header.e_phnum as usize);
         let load_bias = compute_load_bias_wrapping(ptr, &phdrs);
         let dynamic = dyn::from_phdrs(load_bias as u64, phdrs).unwrap();
-        let link_info = dyn::LinkInfo::new(&dynamic, load_bias);
+        let link_info = dyn::DynamicInfo::new(&dynamic, load_bias);
         let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM;
         let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
         let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz as usize);
@@ -136,7 +136,7 @@ impl<'process> SharedObject<'process> {
 
             if let Some(dynamic) = dyn::from_phdrs(load_bias, phdrs) {
 
-                let link_info = dyn::LinkInfo::new(dynamic, load_bias as usize);
+                let link_info = dyn::DynamicInfo::new(dynamic, load_bias as usize);
                 // TODO: swap out the link_info syment with compile time constant SIZEOF_SYM?
                 let num_syms = (link_info.strtab - link_info.symtab) / link_info.syment; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
                 let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
