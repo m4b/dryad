@@ -1,17 +1,19 @@
-/// TODO: decide on whether to support only Rela (probably yes?); have rdr scan binaries to see frequency of rel (no addend) relocation tables
+/// According to glibc:
+/// ```c
+/// /* The x86-64 never uses Elf64_Rel/Elf32_Rel relocations.  */
+/// #define ELF_MACHINE_NO_REL 1
+/// #define ELF_MACHINE_NO_RELA 0
+/// ```
 use std::fmt;
 
 use binary::elf::header::Header;
-use binary::elf::program_header;
-use binary::elf::program_header::ProgramHeader;
-use binary::elf::dyn;
-use binary::elf::dyn::Dyn;
-use binary::elf::sym;
-use binary::elf::sym::Sym;
+use binary::elf::program_header::{self, ProgramHeader};
+use binary::elf::dyn::{self, Dyn};
+use binary::elf::sym::{self, Sym};
 use binary::elf::strtab::Strtab;
-use binary::elf::rela;
-use binary::elf::rela::Rela;
+use binary::elf::rela::{self, Rela};
 use binary::elf::gnu_hash::GnuHash;
+use tls;
 
 /// Computes the "load bias", which is normally the base.  However, in older Linux kernel's, 3.13, and whatever runs on travis, I have discovered that the kernel incorrectly maps the vdso with "bad" values.
 ///
@@ -67,6 +69,7 @@ pub struct SharedObject<'process> {
     pub load_path: Option<String>,
     pub flags: u64,
     pub state_flags: u64,
+    pub tls: Option<tls::TlsInfo>,
 }
 
 impl<'process> fmt::Debug for SharedObject<'process> {
@@ -110,6 +113,7 @@ impl<'process> SharedObject<'process> {
             load_path: None,
             flags: link_info.flags,
             state_flags: link_info.flags_1,
+            tls: None,
         }
 
     }
@@ -161,6 +165,7 @@ impl<'process> SharedObject<'process> {
                     load_path: Some (name.to_string()), // TODO: make absolute?,
                     flags: link_info.flags,
                     state_flags: link_info.flags_1,
+                    tls: None,
                 })
 
             } else {
@@ -169,13 +174,15 @@ impl<'process> SharedObject<'process> {
         }
     }
 
-    pub fn find (&self, name: &str, hash: u32) -> Option<u64> {
+    /// This is used by dryad's runtime symbol resolution
+    pub fn find (&self, name: &str, hash: u32) -> Option<sym::Sym> {
 //        println!("<{}.find> finding symbol: {}", self.name, symbol);
         match self.gnu_hash {
-            Some (ref gnu_hash) => gnu_hash.find(hash, name, self.load_bias, &self.strtab, &self.symtab),
+            Some (ref gnu_hash) => gnu_hash.find(hash, name, &self.strtab, &self.symtab),
             None => None
         }
     }
+
 }
 
 //unsafe impl<'a> Send for SharedObject<'a> {}

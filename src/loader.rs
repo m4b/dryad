@@ -14,6 +14,7 @@ use binary::elf::sym;
 use binary::elf::rela;
 use binary::elf::strtab::Strtab;
 use binary::elf::gnu_hash::GnuHash;
+use tls;
 
 #[inline(always)]
 fn compute_load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
@@ -101,7 +102,8 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     let mut phdrs_vaddr = 0;
     let mut dynamic_vaddr = None;
     let mut has_pt_load = false;
-    let (mut tls_blocksize, mut tls_align, mut tls_firstbyte_offset, mut tls_initimage_size, mut tls_initimage) = (0, 0, 0, 0, 0);
+//    let (mut tls_blocksize, mut tls_align, mut tls_firstbyte_offset, mut tls_initimage_size, mut tls_initimage) = (0, 0, 0, 0, 0);
+    let mut tls = None;
     for phdr in &phdrs {
 
         match phdr.p_type {
@@ -115,11 +117,13 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
             },
 
             program_header::PT_TLS => {
-                tls_blocksize = phdr.p_memsz;
-                tls_align = phdr.p_align;
-                tls_firstbyte_offset = if phdr.p_align == 0 { phdr.p_align } else { phdr.p_vaddr & (phdr.p_align - 1) };
-                tls_initimage_size = phdr.p_filesz;
-                tls_initimage = phdr.p_vaddr;
+                dbgc!(purple_bold: true, "tls", "PT_TLS in {}", soname);
+                let blocksize = phdr.p_memsz as usize;
+                let align = phdr.p_align as usize;
+                let firstbyte_offset = if phdr.p_align == 0 { phdr.p_align } else { phdr.p_vaddr & (phdr.p_align - 1) } as usize;
+                let image_size = phdr.p_filesz as usize;
+                let image = phdr.p_vaddr as usize;
+                tls = Some (tls::TlsInfo { blocksize: blocksize, align: align, offset: 0, modid: 0, firstbyte_offset: firstbyte_offset, image: image, image_size: image_size });
                 // TODO: increment the global `_dl_next_tls_modid` and set tls_modid to this value
             },
 
@@ -235,6 +239,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
         load_path: Some (load_path),
         flags: link_info.flags,
         state_flags: link_info.flags_1,
+        tls: tls,
     };
 
     Ok (shared_object)

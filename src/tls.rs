@@ -56,3 +56,20 @@ l_tls_offset = 128,
 l_tls_modid = 2,
 l_tls_dtor_count = 0,
 */
+
+#[derive(Debug, Clone, Copy)]
+pub struct TlsInfo {
+    pub blocksize: usize, // actual memory size ph_memsz
+    pub align: usize,
+    pub offset: isize,
+    pub modid: u32,
+    pub firstbyte_offset: usize,
+    pub image: usize,
+    pub image_size: usize,
+}
+
+impl TlsInfo {
+    pub fn new (){
+        unimplemented!();
+    }
+}

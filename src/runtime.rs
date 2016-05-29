@@ -31,8 +31,8 @@ pub extern fn dryad_resolve_symbol (rndzv_ptr: *const Rendezvous, rela_idx: usiz
         let hash = gnu_hash::hash(name);
         for (i, so) in link_map.iter().enumerate() {
             if let Some (symbol) = so.find(name, hash) {
-                dbgc!(blue_bold: rndzv.debug, "dryad.runtime", "binding \"{}\" in {} to {} at address 0x{:x}", name, so.name, requesting_so.name, symbol);
-                return symbol as usize
+                dbgc!(blue_bold: rndzv.debug, "dryad.runtime", "binding \"{}\" in {} to {} at address 0x{:x}", name, so.name, requesting_so.name, symbol.st_value);
+                return symbol.st_value as usize
             }
         }
         dbgc!(blue_bold: true, "dryad.runtime", "Uh-oh, symbol {} not found, about to return a 0xdeadbeef sandwhich for you to munch on, goodbye!", name);

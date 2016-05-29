@@ -16,13 +16,12 @@ use std::path::Path;
 extern crate crossbeam;
 
 use binary::elf::header::Header;
-use binary::elf::program_header;
-use binary::elf::program_header::ProgramHeader;
+use binary::elf::program_header::{self, ProgramHeader};
 use binary::elf::dyn;
 use binary::elf::rela;
+use binary::elf::sym;
 use loader;
-use image::SharedObject;
-use image;
+use image::{self, SharedObject};
 use binary::elf::gnu_hash;
 
 use gdb;
@@ -259,14 +258,14 @@ impl<'process> Linker<'process> {
         }
     }
 
-    fn find_symbol(&self, name: &str) -> Option<u64> {
+    fn find_symbol(&self, name: &str) -> Option<sym::Sym> {
         // actually, this is an unfair optimization; the library might use a different hash system, like sysv
         // in which case we can't pre-hash using gnu_hash, unless we assume every lib uses gnu_hash :/
         let hash = gnu_hash::hash(name);
         for so in &self.link_map {
-            let addr = so.find(name, hash);
-            if addr != None {
-                return addr
+            let sym = so.find(name, hash);
+            if sym != None {
+                return sym
             }
         }
         None
@@ -340,12 +339,13 @@ impl<'process> Linker<'process> {
     }
 
     // TODO: rela::R_X86_64_GLOB_DAT => this is a symbol resolution and requires full link map data, and _cannot_ be done before everything is relocated
-    fn relocate_got (&self, idx: usize, object: &SharedObject) {
-        let symtab = &object.symtab;
-        let strtab = &object.strtab;
-        let bias = object.load_bias;
+    fn relocate_got (&self, idx: usize, so: &SharedObject) {
+        let symtab = &so.symtab;
+        let strtab = &so.strtab;
+        let bias = so.load_bias;
         let mut count = 0;
-        for rela in object.relatab {
+        let tls = so.tls;
+        for rela in so.relatab {
             let typ = rela::r_type(rela.r_info);
             let sym = rela::r_sym(rela.r_info); // index into the sym table
             let symbol = &symtab[sym as usize];
@@ -355,18 +355,29 @@ impl<'process> Linker<'process> {
 //            if self.config.debug { println!("relocating {} {}({:?}) with addend {:x} to {:x}", name, (rela::type_to_str(typ)), reloc, rela.r_addend, (rela.r_addend + bias as i64)); }
             match typ {
                 // B + A
-                rela::R_X86_64_RELATIVE | rela::R_X86_64_TPOFF64 => {
+                rela::R_X86_64_RELATIVE => {
                     // set the relocations address to the load bias + the addend
                     unsafe { *reloc = (rela.r_addend + bias as i64) as u64; }
                     count += 1;
                 },
-                // S TODO: this is a symbol resolution and requires
+                // (S + A) - offset
+                rela::R_X86_64_TPOFF64 => {
+                    if let Some(symbol) = self.find_symbol(name) {
+                        dbgc!(purple_bold: true, "tls", "tls symbol: 0x{:x} for {}", symbol.st_value, so.name);
+                        /*
+                        let tls = tls.unwrap();
+                        unsafe { *reloc = ((symbol as i64 + rela.r_addend + bias as i64) - tls.offset as i64) as u64; }
+                        count += 1;
+                        */
+                    }
+                },
+                // S
                 rela::R_X86_64_GLOB_DAT => {
                     // resolve symbol;
                     // 1. start with exe, then next in needed, then next until symbol found
                     // 2. use gnu_hash with symbol name to get sym info
                     if let Some(symbol) = self.find_symbol(name) {
-                        unsafe { *reloc = symbol; }
+                        unsafe { *reloc = symbol.st_value + bias; }
                     }
                     count += 1;
                 },
@@ -374,7 +385,7 @@ impl<'process> Linker<'process> {
                 rela::R_X86_64_64 => {
                     // TODO: this is inaccurate because find_symbol is inaccurate
                     if let Some(symbol) = self.find_symbol(name) {
-                        unsafe { *reloc = (rela.r_addend + symbol as i64) as u64; }
+                        unsafe { *reloc = (rela.r_addend + symbol.st_value as i64) as u64; }
                     }
                     count += 1;
                 },
@@ -389,9 +400,9 @@ impl<'process> Linker<'process> {
             }
         }
 
-        dbg!(self.config.debug, "relocated {} symbols in {}", count, &object.name);
+        dbg!(self.config.debug, "relocated {} symbols in {}", count, &so.name);
 
-        self.prepare_got(idx, object.pltgot, &object.name);
+        self.prepare_got(idx, so.pltgot, &so.name);
     }
 
     /// TODO: add check for if SO has the DT_BIND_NOW, and also other flags...
@@ -414,9 +425,9 @@ impl<'process> Linker<'process> {
             let reloc = (rela.r_offset + bias) as *mut u64;
             match typ {
                 rela::R_X86_64_JUMP_SLOT if self.config.bind_now => {
-                    if let Some(symbol_address) = self.find_symbol(name) {
+                    if let Some(symbol) = self.find_symbol(name) {
 //                        if self.config.debug { println!("resolving {} to {:#x}", name, symbol_address); }
-                        unsafe { *reloc = symbol_address; }
+                        unsafe { *reloc = symbol.st_value; }
                         count += 1;
                     } else {
                         dbgc!(orange_bold: self.config.debug, "dryad.warning", "no resolution for {}", name);
