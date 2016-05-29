@@ -178,7 +178,7 @@ impl<'process> SharedObject<'process> {
     pub fn find (&self, name: &str, hash: u32) -> Option<sym::Sym> {
 //        println!("<{}.find> finding symbol: {}", self.name, symbol);
         match self.gnu_hash {
-            Some (ref gnu_hash) => gnu_hash.find(hash, name, &self.strtab, &self.symtab),
+            Some (ref gnu_hash) => gnu_hash.find(name, hash, &self.strtab, &self.symtab),
             None => None
         }
     }
