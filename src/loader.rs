@@ -105,6 +105,14 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
 
         match phdr.p_type {
 
+            program_header::PT_PHDR => {
+                phdrs_vaddr = phdr.p_vaddr;
+            },
+
+            program_header::PT_DYNAMIC => {
+                dynamic_vaddr = Some(phdr.p_vaddr);
+            },
+
             program_header::PT_LOAD => {
                 has_pt_load = true;
                 // Segment offsets: rounds down the segment start to a value suitable for mmaping, and adjusts the size of the 
@@ -153,14 +161,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
                     //seg_file_end = page::page_end(seg_file_end);
 
                 }
-            } // end match PT_LOAD
-
-            program_header::PT_PHDR => {
-                phdrs_vaddr = phdr.p_vaddr;
-            },
-            program_header::PT_DYNAMIC => {
-                dynamic_vaddr = Some(phdr.p_vaddr);
-            },
+            }, // end match PT_LOAD
             _ => () // do nothing, i.e., continue
         }
     }
