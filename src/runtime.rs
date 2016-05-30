@@ -1,6 +1,7 @@
 use image::SharedObject;
 use binary::elf::rela;
 use binary::elf::gnu_hash;
+use utils;
 
 extern {
     /// The assembly stub which grabs the stack pointer, aligns and unwinds the stack into parameters and then calls `dryad_resolve_symbol` with those parameters.
@@ -31,11 +32,12 @@ pub extern fn dryad_resolve_symbol (rndzv_ptr: *const Rendezvous, rela_idx: usiz
         let hash = gnu_hash::hash(name);
         for (i, so) in link_map.iter().enumerate() {
             if let Some (symbol) = so.find(name, hash) {
-                dbgc!(blue_bold: rndzv.debug, "dryad.runtime", "binding \"{}\" in {} to {} at address 0x{:x}", name, so.name, requesting_so.name, symbol.st_value);
-                return symbol.st_value as usize
+                dbgc!(blue_bold: rndzv.debug, "dryad.runtime", "binding \"{}\" in {} to {} at address 0x{:x}", name, so.name, requesting_so.name, symbol.st_value + so.load_bias);
+                return (symbol.st_value + so.load_bias) as usize
             }
         }
-        dbgc!(blue_bold: true, "dryad.runtime", "Uh-oh, symbol {} not found, about to return a 0xdeadbeef sandwhich for you to munch on, goodbye!", name);
-        0xdeadbeef // lel
+        dbgc!(blue_bold: true, "dryad.runtime", "Error: symbol \"{}\" not found, aborting execution of {}, goodbye!", name, requesting_so.name);
+        utils::_exit(1);
+        0xd47ad
     }
 }
