@@ -79,7 +79,7 @@ fn pflags_to_prot (x: u32) -> isize {
 }
 
 /// Loads an ELF binary from the given fd, mmaps its contents, and returns a SharedObject, whose lifetime is tied to the mmap's, i.e., manually managed
-pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) -> Result <SharedObject<'a>, String> {
+pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, modid: &mut u32) -> Result <SharedObject<'a>, String> {
 
     ///////////////
     // Part I:
@@ -102,7 +102,6 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
     let mut phdrs_vaddr = 0;
     let mut dynamic_vaddr = None;
     let mut has_pt_load = false;
-//    let (mut tls_blocksize, mut tls_align, mut tls_firstbyte_offset, mut tls_initimage_size, mut tls_initimage) = (0, 0, 0, 0, 0);
     let mut tls = None;
     for phdr in &phdrs {
 
@@ -123,8 +122,8 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool) ->
                 let firstbyte_offset = if phdr.p_align == 0 { phdr.p_align } else { phdr.p_vaddr & (phdr.p_align - 1) } as usize;
                 let image_size = phdr.p_filesz as usize;
                 let image = phdr.p_vaddr as usize;
-                tls = Some (tls::TlsInfo { blocksize: blocksize, align: align, offset: 0, modid: 0, firstbyte_offset: firstbyte_offset, image: image, image_size: image_size });
-                // TODO: increment the global `_dl_next_tls_modid` and set tls_modid to this value
+                let modid = { *modid += 1; *modid }; // increment, this will probably need to be atomic
+                tls = Some (tls::TlsInfo { blocksize: blocksize, align: align, offset: 0, modid: modid, firstbyte_offset: firstbyte_offset, image: image, image_size: image_size });
             },
 
             program_header::PT_LOAD => {

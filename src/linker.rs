@@ -179,6 +179,7 @@ pub struct Linker<'process> {
     link_map_order: Vec<String>,
     link_map: Vec<SharedObject<'process>>,
     gdb: &'process mut gdb::Debug,
+    tls_modid: u32,
     // TODO: add a set of SharedObject names which a dryad thread inserts into after stealing work to load a SharedObject;
     // this way when other threads check to see if they should load a dep, they can skip from adding it to the set because it's being worked on
     // TODO: lastly, must determine a termination condition to that indicates all threads have finished recursing and no more work is waiting, and hence can transition to the relocation stage
@@ -249,6 +250,7 @@ impl<'process> Linker<'process> {
                     link_map: link_map,
                     auxv: auxv,
                     gdb: gdb,
+                    tls_modid: 0,
                 })
 
             } else {
@@ -365,8 +367,6 @@ impl<'process> Linker<'process> {
             let symbol = &symtab[sym as usize];
             let name = &strtab[symbol.st_name as usize];
             let reloc = (rela.r_offset + bias) as *mut u64;
-            // TODO: remove this print, misleading on anything other than RELATIVE relocs
-//            if self.config.debug { println!("relocating {} {}({:?}) with addend {:x} to {:x}", name, (rela::type_to_str(typ)), reloc, rela.r_addend, (rela.r_addend + bias as i64)); }
             match typ {
                 // B + A
                 rela::R_X86_64_RELATIVE => {
@@ -378,7 +378,8 @@ impl<'process> Linker<'process> {
                 rela::R_X86_64_TPOFF64 => {
                     if let Some((symbol, providing_so)) = self.find_symbol(name) {
                         let tls = providing_so.tls.expect(&format!("Error: symbol \"{}\" required in {}, but the providing so {} does not have a TLS program header", name, so.name, providing_so.name));
-                        unsafe { *reloc = ((symbol.st_value as i64 + rela.r_addend + bias as i64) - tls.offset as i64) as u64; }
+                        // TODO: using the provider's bias, not sure if this is correct yet
+                        unsafe { *reloc = (symbol.st_value as i64 + rela.r_addend + providing_so.load_bias as i64 - tls.offset as i64) as u64; }
                         dbgc!(purple_bold: self.config.debug, "tls", "bound tls symbol \"{}\" required in {} to provider {} with address 0x{:x}", name, so.name, providing_so.name, unsafe { *reloc });
                         count += 1;
                     }
@@ -481,7 +482,7 @@ impl<'process> Linker<'process> {
                     Ok (mut fd) => {
                         found = true;
                         dbg!(self.config.debug, "opened: {:?}", fd);
-                        let shared_object = try!(loader::load(soname, file.to_string_lossy().into_owned(), &mut fd,  self.config.debug));
+                        let shared_object = try!(loader::load(soname, file.to_string_lossy().into_owned(), &mut fd,  self.config.debug, &mut self.tls_modid));
                         unsafe { self.gdb.add_so(&shared_object); }
 
                         let libs = &shared_object.libs.to_owned(); // TODO: fix this unnecessary allocation, but we _must_ insert before iterating
