@@ -9,6 +9,7 @@ gcc = "0.3"
 
 [dependencies]
 crossbeam = "0.2.9"
+syscall = "0.2.1"
 goblin = {git = "http://github.com/m4b/goblin"}
 colorify = "0.2.2"
 

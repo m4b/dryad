@@ -1,4 +1,5 @@
 use libc;
+use std::cmp;
 
 #[allow(non_camel_case_types)]
 pub type size_t = ::std::os::raw::c_ulong;
@@ -89,6 +90,7 @@ unsafe fn memset(ptr: *mut u8, byte: u8, size: usize) {
 // always remember, for x86_64: TLS_TCB_AT_TP
 // the TCB follows the TLS blocks
 
+
 #[repr(C)]
 #[derive(Debug)]
 struct Pointer {
@@ -96,6 +98,7 @@ struct Pointer {
     is_static: bool
 }
 
+// this is a union :/, either counter or pointer
 #[repr(C)]
 #[derive(Debug)]
 struct Dtv {
@@ -112,6 +115,7 @@ unsafe fn get_dtv(tls_storage: *mut libc::c_void) -> *mut Dtv {
     *descr_dtv
 }
 
+// TODO: rename this to something better, like ModuleInfo or SlotInfo
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct DtvInfo {
@@ -158,9 +162,10 @@ pub unsafe fn _dl_allocate_tls_storage () -> *mut libc::c_void {
 // TODO: finish
 // dl-tls.c:448 _dl_allocate_tls_init (void *result)
 // TODO: replace max_dtv_idx/modid and tls_clients with mut self
-pub unsafe fn allocate_tls (max_dtv_idx: u32, tls_clients: Vec<DtvInfo>) -> *mut libc::c_void {
+pub unsafe fn allocate_tls (max_dtv_idx: u32, modules: &[DtvInfo]) -> *mut libc::c_void {
     let tls_storage = _dl_allocate_tls_storage ();
     if tls_storage.is_null() {
+        // TODO: actually don't think I can panic, because no TLS yet :/
         panic!("Error: tls storage failed to allocate");
     }
     let dtv = get_dtv(tls_storage);
@@ -169,14 +174,17 @@ pub unsafe fn allocate_tls (max_dtv_idx: u32, tls_clients: Vec<DtvInfo>) -> *mut
     // need to write a resize_dtv routine of course, too
     // and then call install_dtv
     let total = 0;
-    let maxgen = 0;
+    let mut maxgen = 0;
     loop {
         let cnt = if total == 0 { 1 } else { 0 };
-        for cnt in cnt..2 {
-            if total + cnt > max_dtv_idx {
+        for cnt in cnt..modules.len() {
+            if total + cnt > max_dtv_idx as usize {
                 break;
             }
-//            maxgen = max(maxgen, 
+            let info = modules[cnt].info;
+            maxgen = cmp::max(maxgen, modules[cnt].generation);
+            // need to transmute here due to union...
+//            dtv[info.modid]
         }
         // TODO: remove after fixed
         break;
@@ -185,16 +193,61 @@ pub unsafe fn allocate_tls (max_dtv_idx: u32, tls_clients: Vec<DtvInfo>) -> *mut
 //    tls_storage
 }
 
-// TODO: finish
-// dl-tls.c:137 _dl_determine_tlsoffset (void)
-unsafe fn determine_offset(clients: &mut[DtvInfo]) {
-    unimplemented!();
+#[inline(always)]
+/// misc/sys/param.h
+/// assuming __GNUC__ not defined...
+fn roundup(x: usize, y: usize) -> usize {
+    ((x + (y - 1)) / y) * y
 }
 
-// TODO: finish
-// sysdeps/x86_64/nptl/tls.h:148 TLS_INIT_TP(thrdescr)
+/// Implements:
+/// dl-tls.c:137 _dl_determine_tlsoffset (void)
+fn determine_offset(static_align: &mut usize, static_used: &mut usize, static_size: &mut usize, modules: &mut[DtvInfo]) {
+    let mut max_align = TLS_TCB_ALIGN;
+    let mut freetop = 0;
+    let mut freebottom = 0;
+    assert!(modules.len() == 1);
+
+    let mut offset = 0;
+
+    for (i, slot_info) in modules.iter().enumerate() {
+        let mut info = slot_info.info;
+        let mut off;
+        // todo: verify ! = -
+        let firstbyte = (!info.firstbyte_offset) & (info.align - 1);
+        max_align = cmp::max(max_align, info.align);
+
+        if (freebottom - freetop) >= info.blocksize {
+            off = roundup ((freetop + info.blocksize) - firstbyte, info.align + firstbyte);
+            if off <= freebottom {
+                freetop = off;
+                info.offset = off as isize;
+                continue;
+            }
+        }
+
+        off = roundup (offset + info.blocksize - firstbyte, info.align) + firstbyte;
+        if off > offset + info.blocksize + (freebottom - freetop) {
+            freetop = offset;
+            freebottom = off - info.blocksize;
+        }
+        offset = off;
+        info.offset = off as isize;
+    }
+
+    *static_used = offset;
+    *static_size = roundup(offset + TLS_STATIC_SURPLUS, max_align) + TLS_TCB_SIZE;
+
+    *static_align = max_align;
+
+   dbgc!(purple_bold: true, "tls", "determine_offset final static_used: {} static_size: {} static_align: {} freetop: {} freebottom: {}", static_used, static_size, static_align, freetop, freebottom);
+}
+
+/// Implements: sysdeps/x86_64/nptl/tls.h:148 TLS_INIT_TP(thrdescr)
+/// sets up the `fs` thread pointer on x86_64
+#[inline(always)]
 unsafe fn tls_init_tp (tcbp: *mut libc::c_void) {
-    unimplemented!();
+    syscall!(ARCH_PRCTL, 0x1002, tcbp as usize);
 }
 
 // for special tls just for local process i believe, so it can access errno, etc.
@@ -223,7 +276,17 @@ pub const DTV_SURPLUS: libc::size_t = 14;
 // sysdeps/generic/ldsodefs.h:399
 pub const TLS_SLOTINFO_SURPLUS: libc::size_t = 62;
 
+// this was the most miserable thing in the world to figure out
+// __alignof__ (struct pthread)
+pub const TLS_TCB_ALIGN: libc::size_t = 8;
+
+// "Non-shared code has no support for multiple namespaces."
+// sysdeps/generic/ldsodefs.h:276
+pub const DL_NNS: libc::size_t = 16;
+// dl-tls.c:34
+pub const TLS_STATIC_SURPLUS: libc::size_t = 64 + DL_NNS * 100;
+
 /// https://en.wikipedia.org/wiki/Lachesis_(mythology)
 pub struct Lachesis {
-    pub clients: Vec<DtvInfo>
+    pub modules: Vec<DtvInfo>
 }

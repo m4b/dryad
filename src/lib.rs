@@ -10,6 +10,8 @@
 #[cfg(not(feature = "no_color"))]
 #[macro_use] extern crate colorify;
 
+#[macro_use] extern crate syscall;
+
 pub extern crate goblin;
 pub use goblin as binary;
 
