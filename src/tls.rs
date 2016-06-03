@@ -90,27 +90,27 @@ unsafe fn memset(ptr: *mut u8, byte: u8, size: usize) {
 // always remember, for x86_64: TLS_TCB_AT_TP
 // the TCB follows the TLS blocks
 
-
 #[repr(C)]
-#[derive(Debug)]
-struct Pointer {
-    val: *mut libc::c_void,
-    is_static: bool
+#[derive(Debug, Clone)]
+struct DtvHead {
+    counter: usize,
+    _padding: [u8; 4],
 }
 
 // this is a union :/, either counter or pointer
+// the counter is only used for the first element in the dtv (DtvHead), because C programmers are dicks
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Dtv {
-    counter: usize,
-    pointer: Pointer
+    val: *mut libc::c_void,
+    is_static: bool
 }
 
 pub const SIZEOF_DTV: usize = 0x10;
 
 #[inline(always)]
-unsafe fn get_dtv(tls_storage: *mut libc::c_void) -> *mut Dtv {
-    let descr_dtv = tls_storage.offset(1) as *mut *mut Dtv;
+unsafe fn get_dtv(tls_storage: *mut libc::c_void) -> *mut DtvHead {
+    let descr_dtv = tls_storage.offset(1) as *mut *mut DtvHead;
     dbgc!(purple_bold: true, "tls", "get_dtv: {:?}", **descr_dtv);
     *descr_dtv
 }
@@ -118,22 +118,22 @@ unsafe fn get_dtv(tls_storage: *mut libc::c_void) -> *mut Dtv {
 // TODO: rename this to something better, like ModuleInfo or SlotInfo
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct DtvInfo {
+pub struct SlotInfo {
     generation: u32,
     info: TlsInfo
 }
 
 #[inline(always)]
 /// Installs the dtv in the tcbhead_t struct, which is the second element; we hack it for now by simply casting and setting the offset; see `sysdeps/x86_64/nptl/tls.h:128`
-unsafe fn install_dtv(tls_storage: *mut libc::c_void, dtv: *mut Dtv) {
+unsafe fn install_dtv(tls_storage: *mut libc::c_void, dtv: *mut DtvHead) {
     let descr_dtv = tls_storage.offset(1) as *mut *mut Dtv;
-    *descr_dtv = dtv.offset(1);
+    *descr_dtv = dtv.offset(1) as *mut Dtv;
 }
 
 unsafe fn allocate_dtv (tls_storage: *mut libc::c_void) -> *mut libc::c_void {
     let dtv_len = 2 + DTV_SURPLUS;
     dbgc!(purple_bold: true, "tls", "allocate_dtv dtv_len: {:?}", dtv_len);
-    let dtv = libc::calloc(dtv_len + 2, SIZEOF_DTV as libc::size_t) as *mut Dtv;
+    let dtv = libc::calloc(dtv_len + 2, SIZEOF_DTV as libc::size_t) as *mut DtvHead;
     dbgc!(purple_bold: true, "tls", "allocate_dtv calloc dtv: {:?}", dtv);
     if !dtv.is_null() {
         // hehe surries!
@@ -162,8 +162,7 @@ pub unsafe fn _dl_allocate_tls_storage () -> *mut libc::c_void {
 // TODO: finish
 // dl-tls.c:448 _dl_allocate_tls_init (void *result)
 // TODO: replace max_dtv_idx/modid and tls_clients with mut self
-pub unsafe fn allocate_tls (max_dtv_idx: u32, modules: &[DtvInfo]) -> *mut libc::c_void {
-    let tls_storage = _dl_allocate_tls_storage ();
+pub unsafe fn allocate_tls_init (max_dtv_idx: u32, tls_storage: *mut libc::c_void, modules: &[SlotInfo]) -> *mut libc::c_void {
     if tls_storage.is_null() {
         // TODO: actually don't think I can panic, because no TLS yet :/
         panic!("Error: tls storage failed to allocate");
@@ -173,36 +172,54 @@ pub unsafe fn allocate_tls (max_dtv_idx: u32, modules: &[DtvInfo]) -> *mut libc:
     // do this by examining the len (which is 14 + whatever modules we loaded) and checking if it's smaller than our dtv_idx counter (basically last modid)
     // need to write a resize_dtv routine of course, too
     // and then call install_dtv
-    let total = 0;
+    let mut total = 0;
     let mut maxgen = 0;
+    dbgc!(purple_bold: true, "tls", "allocate_tls entering loop with modules: {:?}", modules);
+    // TODO: fix this, broken w.r.t. glibc implementation because
+    // slotinfo_list is a linked list of slotinfo_list, with len, next, and slotinfo[]; but we're just using the slotinfo[] here, because for simple test programs the linked list is always one element...
     loop {
         let cnt = if total == 0 { 1 } else { 0 };
         for cnt in cnt..modules.len() {
             if total + cnt > max_dtv_idx as usize {
                 break;
             }
+            dbgc!(purple_bold: true, "tls", "allocate_tls cnt: {:?}", cnt);
             let info = modules[cnt].info;
             maxgen = cmp::max(maxgen, modules[cnt].generation);
-            // need to transmute here due to union...
-//            dtv[info.modid]
+            let mut dtv_ = dtv.offset(info.modid as isize) as *mut Dtv;
+            *dtv_ = Dtv { val: TLS_DTV_UNALLOCATED, is_static: false};
+
+            // cfg TLS_TCB_AT_TP
+            let dest = (tls_storage.offset(-info.offset as isize)) as *mut u8;
+            let size = info.blocksize - info.image_size;
+            dbgc!(purple_bold: true, "tls", "memset + memcpy: {:?} with size: {} and info.image {} info.image_size {}", dest, size, info.image, info.image_size);
+            ::std::ptr::copy_nonoverlapping(dest, info.image as *mut u8, info.image_size);
+//            libc::memcpy(dest, info.image, info.image_size);
+            memset(dest, 0u8, size);
         }
-        // TODO: remove after fixed
-        break;
+
+        total += cnt;
+        dbgc!(purple_bold: true, "tls", "allocate_tls new total: {:?}", total);
+        if total >= max_dtv_idx as usize {
+            break;
+        }
     }
-    unimplemented!();
-//    tls_storage
+
+    dbgc!(purple_bold: true, "tls", "allocate_tls finished, setting dtv head to maxgen {} with tls storage: {:?}", maxgen, tls_storage);
+    *dtv = DtvHead { counter: maxgen as usize, _padding: [0u8; 4]};
+    tls_storage
 }
 
 #[inline(always)]
 /// misc/sys/param.h
-/// assuming __GNUC__ not defined...
+/// this is not the __GNUC__ version, but simpler; maybe it'll work?
 fn roundup(x: usize, y: usize) -> usize {
     ((x + (y - 1)) / y) * y
 }
 
 /// Implements:
 /// dl-tls.c:137 _dl_determine_tlsoffset (void)
-fn determine_offset(static_align: &mut usize, static_used: &mut usize, static_size: &mut usize, modules: &mut[DtvInfo]) {
+fn determine_offset(static_align: &mut usize, static_used: &mut usize, static_size: &mut usize, modules: &mut[SlotInfo]) {
     let mut max_align = TLS_TCB_ALIGN;
     let mut freetop = 0;
     let mut freebottom = 0;
@@ -256,15 +273,37 @@ unsafe fn tls_init_tp (tcbp: *mut libc::c_void) {
 // 2. allocates the slot info list
 // 3. sets the appropriate data into the slot info list (determine_offset)
 // 4. and installs it via syscall tls_init_tp to the main thread
-unsafe fn init_tls() {
-    unimplemented!();
+// 5. EXTRA: we immediately call allocate_tls_init for testing, which is normally called after the module information are all grabbed and accumulated into _rtld_global by the dynamic linker
+unsafe fn init_tls(max_dtv_idx: u32, modules: &mut [SlotInfo]) {
+    // this will be 64
+    let nelem = max_dtv_idx + 1 + TLS_SLOTINFO_SURPLUS as u32;
+    // TODO: this should probably be 0?
+//    let mut static_align = 64;
+//    let mut static_size = 4096;
+//    let mut static_used = 120;
+
+    let mut static_align = 0;
+    let mut static_size = 0;
+    let mut static_used = 0;
+
+    determine_offset(&mut static_align, &mut static_used, &mut static_size, modules);
+
+    dbgc!(purple_bold: true, "tls", "init_tls determine_offset {} {} {}", static_align, static_size, static_used);
+
+    let tcbp = _dl_allocate_tls_storage();
+    dbgc!(purple_bold: true, "tls", "init_tls allocating tls storage {:?}", tcbp);
+    // make the syscall
+    tls_init_tp(tcbp);
+    dbgc!(purple_bold: true, "tls", "init_tls installed into thread");
+    // glibc sets global tls_init_tp_called = true now and returns the tcbp for later use in allocate_tls_init(tcbp);
+    allocate_tls_init(max_dtv_idx, tcbp, modules);
+    dbgc!(purple_bold: true, "tls", "init_tls allocate_tls_init call finished");
 }
 
 // final process
 // 1. init_tls in main thread = dryad
 // 2. load, relocate, etc.
 // 3. allocate_tls_init (tcbp)
-// 4. call TLS_INIT_TP
 
 pub const TLS_STATIC_SIZE: libc::size_t = 0x1000;
 pub const TLS_STATIC_ALIGN: libc::size_t = 0x40;
@@ -285,8 +324,9 @@ pub const TLS_TCB_ALIGN: libc::size_t = 8;
 pub const DL_NNS: libc::size_t = 16;
 // dl-tls.c:34
 pub const TLS_STATIC_SURPLUS: libc::size_t = 64 + DL_NNS * 100;
+pub const TLS_DTV_UNALLOCATED: *mut libc::c_void = 0xffffffffffffffff as *mut libc::c_void;
 
 /// https://en.wikipedia.org/wiki/Lachesis_(mythology)
 pub struct Lachesis {
-    pub modules: Vec<DtvInfo>
+    pub modules: Vec<SlotInfo>
 }
