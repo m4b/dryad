@@ -73,4 +73,7 @@ link:
 moves:
 	cp dryad.so.1 /tmp
 
-.PHONY: moves link clean tests run
+relocs:
+	@objdump -R dryad.so.1 | wc -l
+
+.PHONY: moves link clean tests run relocs
