@@ -1,5 +1,6 @@
 use libc;
 use std::cmp;
+use binary::elf::program_header;
 
 #[allow(non_camel_case_types)]
 pub type size_t = ::std::os::raw::c_ulong;
@@ -94,7 +95,7 @@ unsafe fn memset(ptr: *mut u8, byte: u8, size: usize) {
 #[derive(Debug, Clone)]
 struct DtvHead {
     counter: usize,
-    _padding: [u8; 4],
+    _padding: [u8; 8],
 }
 
 // this is a union :/, either counter or pointer
@@ -108,6 +109,7 @@ struct Dtv {
 
 pub const SIZEOF_DTV: usize = 0x10;
 
+/// Difference between tls storage and dtv is 0x16f0
 #[inline(always)]
 unsafe fn get_dtv(tls_storage: *mut libc::c_void) -> *mut DtvHead {
     let descr_dtv = tls_storage.offset(1) as *mut *mut DtvHead;
@@ -130,14 +132,15 @@ unsafe fn install_dtv(tls_storage: *mut libc::c_void, dtv: *mut DtvHead) {
     *descr_dtv = dtv.offset(1) as *mut Dtv;
 }
 
-unsafe fn allocate_dtv (tls_storage: *mut libc::c_void) -> *mut libc::c_void {
-    let dtv_len = 2 + DTV_SURPLUS;
+/// dl-tls.c:313 allocate_dtv (void *result)
+unsafe fn allocate_dtv (max_dtv_idx: u32, tls_storage: *mut libc::c_void) -> *mut libc::c_void {
+    let dtv_len = max_dtv_idx as usize + DTV_SURPLUS;
     dbgc!(purple_bold: true, "tls", "allocate_dtv dtv_len: {:?}", dtv_len);
     let dtv = libc::calloc(dtv_len + 2, SIZEOF_DTV as libc::size_t) as *mut DtvHead;
     dbgc!(purple_bold: true, "tls", "allocate_dtv calloc dtv: {:?}", dtv);
     if !dtv.is_null() {
         // hehe surries!
-        (*dtv.offset(0)).counter = dtv_len;
+        (*dtv).counter = dtv_len;
         dbgc!(purple_bold: true, "tls", "allocate_dtv calloc dtv: {:?}", *dtv);
         install_dtv(tls_storage, dtv);
         dbgc!(purple_bold: true, "tls", "allocate_dtv calloc post install: {:?} dtv: {:?}", **(tls_storage.offset(1) as *mut *mut Dtv), *dtv);
@@ -148,7 +151,7 @@ unsafe fn allocate_dtv (tls_storage: *mut libc::c_void) -> *mut libc::c_void {
     }
 }
 
-pub unsafe fn _dl_allocate_tls_storage () -> *mut libc::c_void {
+pub unsafe fn _dl_allocate_tls_storage (max_dtv_idx: u32) -> *mut libc::c_void {
     let mut result = libc::memalign(TLS_STATIC_SIZE, TLS_STATIC_ALIGN);
     dbgc!(purple_bold: true, "tls", "_dl_allocate_tls_storage result: {:?}", result);
     let allocated = result; // to be used by free in case fails, unimplemented
@@ -156,7 +159,7 @@ pub unsafe fn _dl_allocate_tls_storage () -> *mut libc::c_void {
     dbgc!(purple_bold: true, "tls", "_dl_allocate_tls_storage post result: {:?}", result);
     memset(result as *mut u8, 0x0, TLS_TCB_SIZE);
     dbgc!(purple_bold: true, "tls", "_dl_allocate_tls_storage memset result: {:?}", result);
-    allocate_dtv(result)
+    allocate_dtv(max_dtv_idx, result)
 }
 
 // TODO: finish
@@ -206,7 +209,7 @@ pub unsafe fn allocate_tls_init (max_dtv_idx: u32, tls_storage: *mut libc::c_voi
     }
 
     dbgc!(purple_bold: true, "tls", "allocate_tls finished, setting dtv head to maxgen {} with tls storage: {:?}", maxgen, tls_storage);
-    *dtv = DtvHead { counter: maxgen as usize, _padding: [0u8; 4]};
+    *dtv = DtvHead { counter: maxgen as usize, _padding: [0u8; 8]};
     tls_storage
 }
 
@@ -260,10 +263,13 @@ fn determine_offset(static_align: &mut usize, static_used: &mut usize, static_si
    dbgc!(purple_bold: true, "tls", "determine_offset final static_used: {} static_size: {} static_align: {} freetop: {} freebottom: {}", static_used, static_size, static_align, freetop, freebottom);
 }
 
+// seeing segfault, notice shift of address when
+// allocate_dtv calloc dtv: 0x1619640
+//--- SIGSEGV {si_signo=SIGSEGV, si_code=SEGV_MAPERR, si_addr=0x161964f89} ---
 /// Implements: sysdeps/x86_64/nptl/tls.h:148 TLS_INIT_TP(thrdescr)
 /// sets up the `fs` thread pointer on x86_64
 #[inline(always)]
-unsafe fn tls_init_tp (tcbp: *mut libc::c_void) {
+pub unsafe fn tls_init_tp (tcbp: *mut libc::c_void) {
     syscall!(ARCH_PRCTL, 0x1002, tcbp as usize);
 }
 
@@ -274,7 +280,7 @@ unsafe fn tls_init_tp (tcbp: *mut libc::c_void) {
 // 3. sets the appropriate data into the slot info list (determine_offset)
 // 4. and installs it via syscall tls_init_tp to the main thread
 // 5. EXTRA: we immediately call allocate_tls_init for testing, which is normally called after the module information are all grabbed and accumulated into _rtld_global by the dynamic linker
-unsafe fn init_tls(max_dtv_idx: u32, modules: &mut [SlotInfo]) {
+pub unsafe fn init_tls(max_dtv_idx: u32, modules: &mut [SlotInfo]) {
     // this will be 64
     let nelem = max_dtv_idx + 1 + TLS_SLOTINFO_SURPLUS as u32;
     // TODO: this should probably be 0?
@@ -286,11 +292,12 @@ unsafe fn init_tls(max_dtv_idx: u32, modules: &mut [SlotInfo]) {
     let mut static_size = 0;
     let mut static_used = 0;
 
+    dbgc!(purple_bold: true, "tls", "init_tls");
     determine_offset(&mut static_align, &mut static_used, &mut static_size, modules);
 
     dbgc!(purple_bold: true, "tls", "init_tls determine_offset {} {} {}", static_align, static_size, static_used);
 
-    let tcbp = _dl_allocate_tls_storage();
+    let tcbp = _dl_allocate_tls_storage(max_dtv_idx);
     dbgc!(purple_bold: true, "tls", "init_tls allocating tls storage {:?}", tcbp);
     // make the syscall
     tls_init_tp(tcbp);
@@ -328,5 +335,26 @@ pub const TLS_DTV_UNALLOCATED: *mut libc::c_void = 0xffffffffffffffff as *mut li
 
 /// https://en.wikipedia.org/wiki/Lachesis_(mythology)
 pub struct Lachesis {
-    pub modules: Vec<SlotInfo>
+    pub modules: Vec<SlotInfo>,
+    pub current_modid: u32,
+    debug: bool,
+}
+
+impl Lachesis {
+    pub fn new(debug: bool) -> Lachesis {
+        Lachesis { modules: Vec::with_capacity(3), current_modid: 0, debug: debug }
+    }
+
+    pub fn push_module(&mut self, soname: &str, phdr: &program_header::ProgramHeader) -> TlsInfo {
+        dbgc!(purple_bold: self.debug, "lachesis", "PT_TLS in {}", soname);
+        let blocksize = phdr.p_memsz as usize;
+        let align = phdr.p_align as usize;
+        let firstbyte_offset = if phdr.p_align == 0 { phdr.p_align } else { phdr.p_vaddr & (phdr.p_align - 1) } as usize;
+        let image_size = phdr.p_filesz as usize;
+        let image = phdr.p_vaddr as usize;
+        let modid = { self.current_modid += 1; self.current_modid }; // increment, this will probably need to be atomic
+        let tls = TlsInfo { blocksize: blocksize, align: align, offset: 0, modid: modid, firstbyte_offset: firstbyte_offset, image: image, image_size: image_size };
+        self.modules.push(SlotInfo { generation: 0, info: tls });
+        tls
+    }
 }

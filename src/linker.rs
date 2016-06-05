@@ -29,6 +29,7 @@ use utils;
 use kernel_block;
 use auxv;
 use runtime;
+use tls;
 
 //thread_local!(static FOO: u32 = 0xdeadbeef);
 
@@ -179,10 +180,7 @@ pub struct Linker<'process> {
     link_map_order: Vec<String>,
     link_map: Vec<SharedObject<'process>>,
     gdb: &'process mut gdb::Debug,
-    tls_modid: u32,
-    // TODO: add a set of SharedObject names which a dryad thread inserts into after stealing work to load a SharedObject;
-    // this way when other threads check to see if they should load a dep, they can skip from adding it to the set because it's being worked on
-    // TODO: lastly, must determine a termination condition to that indicates all threads have finished recursing and no more work is waiting, and hence can transition to the relocation stage
+    lachesis: tls::Lachesis, // our tls delegate
 }
 
 impl<'process> fmt::Debug for Linker<'process> {
@@ -227,6 +225,7 @@ impl<'process> Linker<'process> {
                 gdb.r_map = Box::into_raw(Box::new(gdb::LinkMap::new(base, "/tmp/dryad.so.1", dynamic)));
 
                 let config = Config::new(&block);
+                let debug = config.debug;
                 let mut working_set = Box::new(HashMap::new());
                 let mut link_map_order = Vec::new();
                 let link_map = Vec::new();
@@ -250,7 +249,7 @@ impl<'process> Linker<'process> {
                     link_map: link_map,
                     auxv: auxv,
                     gdb: gdb,
-                    tls_modid: 0,
+                    lachesis: tls::Lachesis::new(debug),
                 })
 
             } else {
@@ -378,9 +377,9 @@ impl<'process> Linker<'process> {
                 rela::R_X86_64_TPOFF64 => {
                     if let Some((symbol, providing_so)) = self.find_symbol(name) {
                         let tls = providing_so.tls.expect(&format!("Error: symbol \"{}\" required in {}, but the providing so {} does not have a TLS program header", name, so.name, providing_so.name));
-                        // TODO: using the provider's bias, not sure if this is correct yet
-                        unsafe { *reloc = (symbol.st_value as i64 + rela.r_addend + providing_so.load_bias as i64 - tls.offset as i64) as u64; }
-                        dbgc!(purple_bold: self.config.debug, "tls", "bound tls symbol \"{}\" required in {} to provider {} with address 0x{:x}", name, so.name, providing_so.name, unsafe { *reloc });
+                        // TODO: it should be the symbol value (= tls offset in that module) plus the addend + the tls offset into the dtv of that module; i don't think load bias is used at all here, as it will be a relative got load?
+                        unsafe { *reloc = (symbol.st_value as i64 + rela.r_addend as i64 - tls.offset as i64) as u64; }
+                        dbgc!(purple_bold: self.config.debug, "tls", "bound {} \"{}\" required in {} to provider {} with address 0x{:x}", sym::get_type(&symbol), name, so.name, providing_so.name, unsafe { *reloc });
                         count += 1;
                     }
                 },
@@ -482,7 +481,7 @@ impl<'process> Linker<'process> {
                     Ok (mut fd) => {
                         found = true;
                         dbg!(self.config.debug, "opened: {:?}", fd);
-                        let shared_object = try!(loader::load(soname, file.to_string_lossy().into_owned(), &mut fd,  self.config.debug, &mut self.tls_modid));
+                        let shared_object = try!(loader::load(soname, file.to_string_lossy().into_owned(), &mut fd,  self.config.debug, &mut self.lachesis));
                         unsafe { self.gdb.add_so(&shared_object); }
 
                         let libs = &shared_object.libs.to_owned(); // TODO: fix this unnecessary allocation, but we _must_ insert before iterating
@@ -563,6 +562,7 @@ impl<'process> Linker<'process> {
 
         self.link_map.reserve_exact(self.link_map_order.len()+1);
         self.link_map.push(image);
+        // TODO: we should go in reverse order like glibc ?
         for soname in &self.link_map_order {
             let so = self.working_set.remove(soname).unwrap();
             self.link_map.push(so);
@@ -602,6 +602,8 @@ impl<'process> Linker<'process> {
         for so in self.link_map.iter() {
             self.relocate_plt(so);
         }
+
+        unsafe { ::tls::init_tls(self.lachesis.current_modid, &mut self.lachesis.modules); }
 
 //        println!("libc: {:#?}", unsafe { &::tls::__libc});
         // <join>

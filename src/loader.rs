@@ -79,7 +79,7 @@ fn pflags_to_prot (x: u32) -> isize {
 }
 
 /// Loads an ELF binary from the given fd, mmaps its contents, and returns a SharedObject, whose lifetime is tied to the mmap's, i.e., manually managed
-pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, modid: &mut u32) -> Result <SharedObject<'a>, String> {
+pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, lachesis: &mut tls::Lachesis) -> Result <SharedObject<'a>, String> {
 
     ///////////////
     // Part I:
@@ -116,14 +116,8 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, mo
             },
 
             program_header::PT_TLS => {
-                dbgc!(purple_bold: true, "tls", "PT_TLS in {}", soname);
-                let blocksize = phdr.p_memsz as usize;
-                let align = phdr.p_align as usize;
-                let firstbyte_offset = if phdr.p_align == 0 { phdr.p_align } else { phdr.p_vaddr & (phdr.p_align - 1) } as usize;
-                let image_size = phdr.p_filesz as usize;
-                let image = phdr.p_vaddr as usize;
-                let modid = { *modid += 1; *modid }; // increment, this will probably need to be atomic
-                tls = Some (tls::TlsInfo { blocksize: blocksize, align: align, offset: 0, modid: modid, firstbyte_offset: firstbyte_offset, image: image, image_size: image_size });
+                // remove tls info completely out of the SharedObject?
+                tls = Some (lachesis.push_module(soname, &phdr));
             },
 
             program_header::PT_LOAD => {

@@ -125,6 +125,7 @@ impl<'process> SharedObject<'process> {
 //            let mut base = 0;
             let mut load_bias = 0;
 
+            // TODO: add lachesis tls loading here
             for phdr in phdrs {
                 if phdr.p_type == program_header::PT_PHDR {
                     load_bias = phdr_addr - phdr.p_vaddr;
