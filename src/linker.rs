@@ -211,6 +211,7 @@ impl<'process> Linker<'process> {
                 // dryad has successfully relocated itself; time to init tls
                 let mut auxv = auxv::from_raw(block.auxv);
                 auxv[auxv::AT_PHDR as usize] = addr as u64;
+//                tls::Lachesis::init_from_phdrs(load_bias as usize, phdrs);
                 __init_tls(auxv.as_ptr()); // this _should_ be safe since vec only allocates and shouldn't access tls. maybe.
                 /* need something like this or write custom tls initializer
 	        if (__init_tp(__copy_tls((void *)builtin_tls)) < 0) {
@@ -538,7 +539,7 @@ impl<'process> Linker<'process> {
         let name = utils::str_at(block.argv[0], 0);
         let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
         let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
-        let image = try!(SharedObject::from_executable(name, phdr_addr, phnum as usize));
+        let image = try!(SharedObject::from_executable(name, phdr_addr, phnum as usize, &mut self.lachesis));
 
         // insert the _r_debug struct into the executables _DYNAMIC array
         // this is unsafe because we use pointers because I don't feel like changing every borrowed reference for the dynamic array to a mutable borrow for one single time for the whole program duration that the _DYNAMIC array ever gets mutated
@@ -601,9 +602,8 @@ impl<'process> Linker<'process> {
         // 2. if skip, rerun through the link map again and call each constructor, since the GOT was prepared and now dynamic calls are ready
         for so in self.link_map.iter() {
             self.relocate_plt(so);
+            so.link_info.fini;
         }
-
-        unsafe { ::tls::init_tls(self.lachesis.current_modid, &mut self.lachesis.modules); }
 
 //        println!("libc: {:#?}", unsafe { &::tls::__libc});
         // <join>
@@ -616,6 +616,14 @@ impl<'process> Linker<'process> {
         dbg!(self.config.debug, "\"Without forgetting it is quite impossible to live at all.\"");
         if !self.config.secure && self.config.show_auxv {
             auxv::show(&self.auxv);
+        }
+//        unsafe { ::tls::init_tls(self.lachesis.current_modid, &mut self.lachesis.modules); }
+        unsafe {
+            tls::Lachesis::init_from_phdrs(self.load_bias as usize, self.phdrs);
+// calling this with the program header of the entry runs it as normal
+// except since libc isn't properly initialized (__libc_malloc_initialized == 0), it tries to load dynamically and crashes since none of the rtld_global struct is setup :/
+//            let auxv = auxv::from_raw(block.auxv);
+//            __init_tls(auxv.as_ptr()); // this _should_ be safe sin
         }
         mem::forget(self);
         Ok (())

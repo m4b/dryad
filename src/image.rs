@@ -70,6 +70,7 @@ pub struct SharedObject<'process> {
     pub flags: u64,
     pub state_flags: u64,
     pub tls: Option<tls::TlsInfo>,
+    pub link_info: dyn::DynamicInfo,
 }
 
 impl<'process> fmt::Debug for SharedObject<'process> {
@@ -113,30 +114,41 @@ impl<'process> SharedObject<'process> {
             load_path: None,
             flags: link_info.flags,
             state_flags: link_info.flags_1,
-            tls: None,
+            tls: None, // TODO: should probably check for tls, even tho this currently only used for linux gate
+            link_info: link_info,
         }
 
     }
 
-    pub fn from_executable (name: &'static str, phdr_addr: u64, phnum: usize) -> Result<SharedObject<'process>, String> {
+    pub fn from_executable (name: &'static str, phdr_addr: u64, phnum: usize, lachesis: &mut tls::Lachesis) -> Result<SharedObject<'process>, String> {
         unsafe {
             let addr = phdr_addr as *const ProgramHeader;
             let phdrs = ProgramHeader::from_raw_parts(addr, phnum);
-//            let mut base = 0;
-            let mut load_bias = 0;
 
-            // TODO: add lachesis tls loading here
+            let mut load_bias = 0;
+            let mut dynamic_vaddr = None;
+            let mut tls_phdr = None;
             for phdr in phdrs {
-                if phdr.p_type == program_header::PT_PHDR {
-                    load_bias = phdr_addr - phdr.p_vaddr;
-//                    base = phdr_addr - phdr.p_offset;
-                    break;
+                match phdr.p_type {
+                    program_header::PT_PHDR => {
+                        load_bias = phdr_addr - phdr.p_vaddr;
+                    },
+                    program_header::PT_DYNAMIC => {
+                        dynamic_vaddr = Some(phdr.p_vaddr);
+                    },
+                    program_header::PT_TLS => {
+                        tls_phdr = Some(phdr);
+                    },
+                    _ => ()
                 }
             }
-            // if base == 0 then no PT_PHDR and we should terminate? or kernel should have noticed this and we needn't bother
 
-            if let Some(dynamic) = dyn::from_phdrs(load_bias, phdrs) {
+            let tls = if let Some(phdr) = tls_phdr {
+                Some(lachesis.push_module(name, load_bias as usize, phdr))
+            } else { None };
 
+            if let Some(vaddr) = dynamic_vaddr {
+                let dynamic = dyn::from_raw(load_bias, vaddr);
                 let link_info = dyn::DynamicInfo::new(dynamic, load_bias as usize);
                 // TODO: swap out the link_info syment with compile time constant SIZEOF_SYM?
                 let num_syms = (link_info.strtab - link_info.symtab) / link_info.syment; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
@@ -166,7 +178,8 @@ impl<'process> SharedObject<'process> {
                     load_path: Some (name.to_string()), // TODO: make absolute?,
                     flags: link_info.flags,
                     state_flags: link_info.flags_1,
-                    tls: None,
+                    tls: tls,
+                    link_info: link_info,
                 })
 
             } else {

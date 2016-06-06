@@ -73,8 +73,13 @@ pub struct TlsInfo {
 }
 
 impl TlsInfo {
-    pub fn new (){
-        unimplemented!();
+    pub fn new (modid: u32, bias: usize, phdr: &program_header::ProgramHeader) -> TlsInfo {
+        let blocksize = phdr.p_memsz as usize;
+        let align = phdr.p_align as usize;
+        let firstbyte_offset = if phdr.p_align == 0 { phdr.p_align } else { phdr.p_vaddr & (phdr.p_align - 1) } as usize;
+        let image_size = phdr.p_filesz as usize;
+        let image = phdr.p_vaddr as usize + bias;
+        TlsInfo { blocksize: blocksize, align: align, offset: 0, modid: modid, firstbyte_offset: firstbyte_offset, image: image, image_size: image_size }
     }
 }
 
@@ -111,13 +116,11 @@ pub const SIZEOF_DTV: usize = 0x10;
 
 /// Difference between tls storage and dtv is 0x16f0
 #[inline(always)]
-unsafe fn get_dtv(tls_storage: *mut libc::c_void) -> *mut DtvHead {
-    let descr_dtv = tls_storage.offset(1) as *mut *mut DtvHead;
-    dbgc!(purple_bold: true, "tls", "get_dtv: {:?}", **descr_dtv);
+unsafe fn get_dtv(tls_storage: *mut libc::c_void) -> *mut Dtv {
+    let descr_dtv = tls_storage.offset(8) as *mut *mut Dtv;
     *descr_dtv
 }
 
-// TODO: rename this to something better, like ModuleInfo or SlotInfo
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct SlotInfo {
@@ -125,11 +128,12 @@ pub struct SlotInfo {
     info: TlsInfo
 }
 
-#[inline(always)]
-/// Installs the dtv in the tcbhead_t struct, which is the second element; we hack it for now by simply casting and setting the offset; see `sysdeps/x86_64/nptl/tls.h:128`
-unsafe fn install_dtv(tls_storage: *mut libc::c_void, dtv: *mut DtvHead) {
-    let descr_dtv = tls_storage.offset(1) as *mut *mut Dtv;
-    *descr_dtv = dtv.offset(1) as *mut Dtv;
+//#[inline(always)]
+/// Installs the dtv in the tcbhead_t struct, which is the second element (8 bytes out from the pointer); we hack it for now by simply casting and setting the offset; see `sysdeps/x86_64/nptl/tls.h:128`
+unsafe fn install_dtv(tls_storage: *mut libc::c_void, dtv_head: *mut DtvHead) {
+    let descr_dtv = tls_storage.offset(8) as *mut *mut Dtv;
+    let dtv = dtv_head.offset(1) as *mut Dtv;
+    *descr_dtv = dtv;
 }
 
 /// dl-tls.c:313 allocate_dtv (void *result)
@@ -143,7 +147,7 @@ unsafe fn allocate_dtv (max_dtv_idx: u32, tls_storage: *mut libc::c_void) -> *mu
         (*dtv).counter = dtv_len;
         dbgc!(purple_bold: true, "tls", "allocate_dtv calloc dtv: {:?}", *dtv);
         install_dtv(tls_storage, dtv);
-        dbgc!(purple_bold: true, "tls", "allocate_dtv calloc post install: {:?} dtv: {:?}", **(tls_storage.offset(1) as *mut *mut Dtv), *dtv);
+        dbgc!(purple_bold: true, "tls", "allocate_dtv calloc post install: {:?} dtv: {:?}", **(tls_storage.offset(8) as *mut *mut Dtv), *dtv);
         tls_storage
     } else {
         dbgc!(purple_bold: true, "tls", "allocate_dtv dtv is NULL");
@@ -151,11 +155,14 @@ unsafe fn allocate_dtv (max_dtv_idx: u32, tls_storage: *mut libc::c_void) -> *mu
     }
 }
 
-pub unsafe fn _dl_allocate_tls_storage (max_dtv_idx: u32) -> *mut libc::c_void {
-    let mut result = libc::memalign(TLS_STATIC_SIZE, TLS_STATIC_ALIGN);
+pub unsafe fn _dl_allocate_tls_storage (max_dtv_idx: u32, static_align: usize, static_size: usize, static_used: usize) -> *mut libc::c_void {
+
+    // when DTV_AT_TP need to adjust static_size
+
+    let mut result = libc::memalign(static_align, static_size);
     dbgc!(purple_bold: true, "tls", "_dl_allocate_tls_storage result: {:?}", result);
     let allocated = result; // to be used by free in case fails, unimplemented
-    result = result.offset(TLS_STATIC_SIZE as isize - TLS_TCB_SIZE as isize);
+    result = result.offset(static_size as isize - TLS_TCB_SIZE as isize);
     dbgc!(purple_bold: true, "tls", "_dl_allocate_tls_storage post result: {:?}", result);
     memset(result as *mut u8, 0x0, TLS_TCB_SIZE);
     dbgc!(purple_bold: true, "tls", "_dl_allocate_tls_storage memset result: {:?}", result);
@@ -182,11 +189,13 @@ pub unsafe fn allocate_tls_init (max_dtv_idx: u32, tls_storage: *mut libc::c_voi
     // slotinfo_list is a linked list of slotinfo_list, with len, next, and slotinfo[]; but we're just using the slotinfo[] here, because for simple test programs the linked list is always one element...
     loop {
         let cnt = if total == 0 { 1 } else { 0 };
-        for cnt in cnt..modules.len() {
+        // TODO: this is broken here too with loop condition
+        for cnt in 0..modules.len() {
             if total + cnt > max_dtv_idx as usize {
+                dbgc!(purple_bold: true, "tls", "reached break total + cnt = {} > max_dtv_idx {}", total + cnt, max_dtv_idx);
                 break;
             }
-            dbgc!(purple_bold: true, "tls", "allocate_tls cnt: {:?}", cnt);
+            dbgc!(purple_bold: true, "tls", "allocate_tls cnt: {:?} {:?}", cnt, TLS_DTV_UNALLOCATED);
             let info = modules[cnt].info;
             maxgen = cmp::max(maxgen, modules[cnt].generation);
             let mut dtv_ = dtv.offset(info.modid as isize) as *mut Dtv;
@@ -195,7 +204,7 @@ pub unsafe fn allocate_tls_init (max_dtv_idx: u32, tls_storage: *mut libc::c_voi
             // cfg TLS_TCB_AT_TP
             let dest = (tls_storage.offset(-info.offset as isize)) as *mut u8;
             let size = info.blocksize - info.image_size;
-            dbgc!(purple_bold: true, "tls", "memset + memcpy: {:?} with size: {} and info.image {} info.image_size {}", dest, size, info.image, info.image_size);
+            dbgc!(purple_bold: true, "tls", "memset + memcpy: {:?} with size: {} and info.image 0x{:x} info.image_size {}", dest, size, info.image, info.image_size);
             ::std::ptr::copy_nonoverlapping(dest, info.image as *mut u8, info.image_size);
 //            libc::memcpy(dest, info.image, info.image_size);
             memset(dest, 0u8, size);
@@ -209,13 +218,15 @@ pub unsafe fn allocate_tls_init (max_dtv_idx: u32, tls_storage: *mut libc::c_voi
     }
 
     dbgc!(purple_bold: true, "tls", "allocate_tls finished, setting dtv head to maxgen {} with tls storage: {:?}", maxgen, tls_storage);
-    *dtv = DtvHead { counter: maxgen as usize, _padding: [0u8; 8]};
+    // i believe this is a bug in glibc
+    // dtv[0].counter = maxgen
+    // but dtv[-1] is the counter union ?
+    *dtv = Dtv { val: maxgen as *mut libc::c_void, is_static: false};
     tls_storage
 }
 
-#[inline(always)]
 /// misc/sys/param.h
-/// this is not the __GNUC__ version, but simpler; maybe it'll work?
+#[inline(always)]
 fn roundup(x: usize, y: usize) -> usize {
     ((x + (y - 1)) / y) * y
 }
@@ -233,8 +244,8 @@ fn determine_offset(static_align: &mut usize, static_used: &mut usize, static_si
     for (i, slot_info) in modules.iter().enumerate() {
         let mut info = slot_info.info;
         let mut off;
-        // todo: verify ! = -
-        let firstbyte = (!info.firstbyte_offset) & (info.align - 1);
+        // TODO: refactor this to not mimic the insane C api
+        let firstbyte = (-(info.firstbyte_offset as isize) & (info.align - 1) as isize) as usize;
         max_align = cmp::max(max_align, info.align);
 
         if (freebottom - freetop) >= info.blocksize {
@@ -260,7 +271,7 @@ fn determine_offset(static_align: &mut usize, static_used: &mut usize, static_si
 
     *static_align = max_align;
 
-   dbgc!(purple_bold: true, "tls", "determine_offset final static_used: {} static_size: {} static_align: {} freetop: {} freebottom: {}", static_used, static_size, static_align, freetop, freebottom);
+//    dbgc!(purple_bold: true, "tls", "determine_offset final static_used: {} static_size: {} static_align: {} freetop: {} freebottom: {}", static_used, static_size, static_align, freetop, freebottom);
 }
 
 // seeing segfault, notice shift of address when
@@ -270,7 +281,7 @@ fn determine_offset(static_align: &mut usize, static_used: &mut usize, static_si
 /// sets up the `fs` thread pointer on x86_64
 #[inline(always)]
 pub unsafe fn tls_init_tp (tcbp: *mut libc::c_void) {
-    syscall!(ARCH_PRCTL, 0x1002, tcbp as usize);
+    let res = syscall!(ARCH_PRCTL, 0x1002, tcbp as usize);
 }
 
 // for special tls just for local process i believe, so it can access errno, etc.
@@ -297,14 +308,15 @@ pub unsafe fn init_tls(max_dtv_idx: u32, modules: &mut [SlotInfo]) {
 
     dbgc!(purple_bold: true, "tls", "init_tls determine_offset {} {} {}", static_align, static_size, static_used);
 
-    let tcbp = _dl_allocate_tls_storage(max_dtv_idx);
+    let tcbp = _dl_allocate_tls_storage(max_dtv_idx, static_align, static_size, static_used);
     dbgc!(purple_bold: true, "tls", "init_tls allocating tls storage {:?}", tcbp);
     // make the syscall
-    tls_init_tp(tcbp);
+    //tls_init_tp(tcbp);
     dbgc!(purple_bold: true, "tls", "init_tls installed into thread");
     // glibc sets global tls_init_tp_called = true now and returns the tcbp for later use in allocate_tls_init(tcbp);
     allocate_tls_init(max_dtv_idx, tcbp, modules);
     dbgc!(purple_bold: true, "tls", "init_tls allocate_tls_init call finished");
+    tls_init_tp(tcbp);
 }
 
 // final process
@@ -312,9 +324,6 @@ pub unsafe fn init_tls(max_dtv_idx: u32, modules: &mut [SlotInfo]) {
 // 2. load, relocate, etc.
 // 3. allocate_tls_init (tcbp)
 
-pub const TLS_STATIC_SIZE: libc::size_t = 0x1000;
-pub const TLS_STATIC_ALIGN: libc::size_t = 0x40;
-pub const TLS_STATIC_ALIGN_MASK: libc::size_t = !(TLS_STATIC_ALIGN - 1);
 // sizeof (struct pthread)
 pub const TLS_TCB_SIZE: libc::size_t = 0x900;
 // sysdeps/generic/ldsodefs.h:402
@@ -324,7 +333,8 @@ pub const TLS_SLOTINFO_SURPLUS: libc::size_t = 62;
 
 // this was the most miserable thing in the world to figure out
 // __alignof__ (struct pthread)
-pub const TLS_TCB_ALIGN: libc::size_t = 8;
+// __alignof__ (struct pthread) says 8... but gdb shows this has 64
+pub const TLS_TCB_ALIGN: libc::size_t = 64;
 
 // "Non-shared code has no support for multiple namespaces."
 // sysdeps/generic/ldsodefs.h:276
@@ -345,16 +355,47 @@ impl Lachesis {
         Lachesis { modules: Vec::with_capacity(3), current_modid: 0, debug: debug }
     }
 
-    pub fn push_module(&mut self, soname: &str, phdr: &program_header::ProgramHeader) -> TlsInfo {
-        dbgc!(purple_bold: self.debug, "lachesis", "PT_TLS in {}", soname);
-        let blocksize = phdr.p_memsz as usize;
-        let align = phdr.p_align as usize;
-        let firstbyte_offset = if phdr.p_align == 0 { phdr.p_align } else { phdr.p_vaddr & (phdr.p_align - 1) } as usize;
-        let image_size = phdr.p_filesz as usize;
-        let image = phdr.p_vaddr as usize;
+    pub unsafe fn init_from_phdrs(bias: usize, phdrs: &[program_header::ProgramHeader])  {
+        for phdr in phdrs {
+            if phdr.p_type == program_header::PT_TLS {
+                let tls = TlsInfo::new(0, bias, phdr);
+                ::utils::write("in plt init tls\n");
+                let mut static_align = 0;
+                let mut static_size = 0;
+                let mut static_used = 0;
+                let mut modules = vec![SlotInfo { generation: 0, info: tls }];
+                ::utils::write("mod\n");
+                dbgc!(purple_bold: true, "tls", "init_tls");
+                determine_offset(&mut static_align, &mut static_used, &mut static_size, &mut modules);
+                ::utils::write("offset: ");
+                ::utils::write("\nalign: ");
+                ::utils::write_u64(static_align as u64, false);
+                ::utils::write("\nsize: ");
+                ::utils::write_u64(static_size as u64, false);
+                ::utils::write("\nused: ");
+                ::utils::write_u64(static_used as u64, false);
+                ::utils::write("\n");
+                let tcbp = _dl_allocate_tls_storage(1, static_align, static_size, static_used);
+                dbgc!(purple_bold: true, "tls", "init_tls allocating tls storage {:?}", tcbp);
+                ::utils::write("allocate tls storage: 0x");
+                ::utils::write_u64(tcbp as u64, true);
+                ::utils::write("\n");
+                // make the syscall
+                tls_init_tp(tcbp);
+                ::utils::write("init tp\n");
+                allocate_tls_init(1, tcbp, &modules);
+                ::utils::write("allocate tls init\n");
+                dbgc!(purple_bold: true, "tls", "init_tls allocate_tls_init call finished");
+
+            }
+        }
+    }
+
+    pub fn push_module(&mut self, soname: &str, bias: usize, phdr: &program_header::ProgramHeader) -> TlsInfo {
         let modid = { self.current_modid += 1; self.current_modid }; // increment, this will probably need to be atomic
-        let tls = TlsInfo { blocksize: blocksize, align: align, offset: 0, modid: modid, firstbyte_offset: firstbyte_offset, image: image, image_size: image_size };
-        self.modules.push(SlotInfo { generation: 0, info: tls });
+        let tls = TlsInfo::new(modid, bias, phdr);
+        dbgc!(purple_bold: self.debug, "lachesis", "PT_TLS in {} with {:?}", soname, tls);
+        self.modules.push(SlotInfo { generation: 1, info: tls });
         tls
     }
 }

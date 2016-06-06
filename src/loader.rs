@@ -117,7 +117,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
 
             program_header::PT_TLS => {
                 // remove tls info completely out of the SharedObject?
-                tls = Some (lachesis.push_module(soname, &phdr));
+                tls = Some (lachesis.push_module(soname, load_bias as usize, &phdr));
             },
 
             program_header::PT_LOAD => {
@@ -233,6 +233,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
         flags: link_info.flags,
         state_flags: link_info.flags_1,
         tls: tls,
+        link_info: link_info,
     };
 
     Ok (shared_object)
