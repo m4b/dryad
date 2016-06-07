@@ -213,23 +213,22 @@ impl<'process> Linker<'process> {
                 auxv[auxv::AT_PHDR as usize] = addr as u64;
 //                tls::Lachesis::init_from_phdrs(load_bias as usize, phdrs);
                 __init_tls(auxv.as_ptr()); // this _should_ be safe since vec only allocates and shouldn't access tls. maybe.
-                /* need something like this or write custom tls initializer
-	        if (__init_tp(__copy_tls((void *)builtin_tls)) < 0) {
-		a_crash();
-                 }
-                 */
 
                 // we relocated ourselves so it should be safe to init the gdb debug protocols, use global data, reference static strings, call sweet functions, etc.
                 utils::set_panic(); // set this as early as we can
+
+                // init and setup gdb
                 let gdb = &mut gdb::_r_debug;
                 gdb.relocated_init(base);
-                gdb.r_map = Box::into_raw(Box::new(gdb::LinkMap::new(base, "/tmp/dryad.so.1", dynamic)));
 
                 let config = Config::new(&block);
                 let debug = config.debug;
+                dbg!(debug, "init dryad with load_bias: 0x{:x}", load_bias);
                 let mut working_set = Box::new(HashMap::new());
                 let mut link_map_order = Vec::new();
                 let link_map = Vec::new();
+
+                //let soname = utils::str_at(soname, 0);
 
                 if let Some(vdso_addr) = block.getauxval(auxv::AT_SYSINFO_EHDR) {
                     let vdso = SharedObject::from_raw(vdso_addr);
@@ -541,10 +540,6 @@ impl<'process> Linker<'process> {
         let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
         let image = try!(SharedObject::from_executable(name, phdr_addr, phnum as usize, &mut self.lachesis));
 
-        // insert the _r_debug struct into the executables _DYNAMIC array
-        // this is unsafe because we use pointers because I don't feel like changing every borrowed reference for the dynamic array to a mutable borrow for one single time for the whole program duration that the _DYNAMIC array ever gets mutated
-        unsafe { gdb::insert_r_debug(image.dynamic); }
-
         dbg!(self.config.debug, "Main Image:\n  {:#?}", &image);
 
         // 1. load all
@@ -552,12 +547,22 @@ impl<'process> Linker<'process> {
         // TODO: transfer ownership of libs (or allocate) to the linker, so it can be parallelized
         // this is the only obvious candidate for parallelization, and it's dubious at best... but large binaries spend 20% of time loading and 80% on relocation
         self.link_map_order.extend(image.libs.iter().map(|s| s.to_string()));
-
-        unsafe { self.gdb.update(gdb::State::RT_ADD); }
+        unsafe {
+            // insert the _r_debug struct into the executables _DYNAMIC array
+            // this is unsafe because we use pointers because I don't feel like changing every borrowed reference for the dynamic array to a mutable borrow for one single time for the whole program duration that the _DYNAMIC array ever gets mutated
+            gdb::insert_r_debug(image.dynamic);
+            self.gdb.update(gdb::State::RT_ADD);
+        }
         for lib in &image.libs {
             try!(self.load(lib));
         }
-        unsafe { self.gdb.update(gdb::State::RT_CONSISTENT); }
+        unsafe {
+            // we need to read-add dryad otherwise gdb likes to unload it for some reason i have yet to determine; this is a hack.  See:
+            // https://github.com/m4b/dryad/issues/4
+            // TODO: remove hardcoded /tmp/dryad.so.1 and use soname instead
+            gdb::LinkMap::append(Box::into_raw(Box::new(gdb::LinkMap::new(self.load_bias, "/tmp/dryad.so.1", self.dynamic))), self.gdb.r_map);
+            self.gdb.update(gdb::State::RT_CONSISTENT);
+        }
 
         dbg!(self.config.debug, "link_map_order: {:#?}", self.link_map_order);
 
@@ -602,7 +607,6 @@ impl<'process> Linker<'process> {
         // 2. if skip, rerun through the link map again and call each constructor, since the GOT was prepared and now dynamic calls are ready
         for so in self.link_map.iter() {
             self.relocate_plt(so);
-            so.link_info.fini;
         }
 
 //        println!("libc: {:#?}", unsafe { &::tls::__libc});
@@ -618,12 +622,32 @@ impl<'process> Linker<'process> {
             auxv::show(&self.auxv);
         }
 //        unsafe { ::tls::init_tls(self.lachesis.current_modid, &mut self.lachesis.modules); }
+
+        type InitFn = fn (argc: isize, argv: *const *const u8, env: *const *const u8) -> ();
+        for so in self.link_map.iter() {
+//            dbg!(self.config.debug, "{}: init: 0x{:x} - 0x{:x} = 0x{:x}", so.name, so.link_info.init, so.load_bias, so.link_info.init.wrapping_sub(so.load_bias));
+            let (argc, argv, envp) = (block.argc, block.argv.as_ptr(), block.env.as_ptr());
+            if so.link_info.init != 0 {
+                let init = unsafe { mem::transmute::<usize, InitFn>(so.link_info.init as usize)};
+                init(argc, argv, envp);
+                let init_arr = so.link_info.init_array as *mut InitFn;
+                let sz = so.link_info.init_arraysz as usize;
+                let count = sz / mem::size_of::<usize>();
+                for i in 0..count {
+                    unsafe {
+                        let init = mem::transmute::<usize, InitFn>(*init_arr.offset(i as isize) as usize);
+                        init(argc, argv, envp);
+                    }
+                }
+            }
+        }
+
         unsafe {
-            tls::Lachesis::init_from_phdrs(self.load_bias as usize, self.phdrs);
+//            tls::Lachesis::init_from_phdrs(self.load_bias as usize, self.phdrs);
 // calling this with the program header of the entry runs it as normal
 // except since libc isn't properly initialized (__libc_malloc_initialized == 0), it tries to load dynamically and crashes since none of the rtld_global struct is setup :/
-//            let auxv = auxv::from_raw(block.auxv);
-//            __init_tls(auxv.as_ptr()); // this _should_ be safe sin
+            let auxv = auxv::from_raw(block.auxv);
+            __init_tls(auxv.as_ptr()); // this _should_ be safe sin
         }
         mem::forget(self);
         Ok (())

@@ -109,7 +109,7 @@ impl Debug {
         self.r_brk = &r_debug_state as *const _ as u64;
         self.r_state = State::RT_CONSISTENT;
         // i think gdb likes it when there is a first "null" value here... So it can skip it. But it's hard to say, not done debugging the debugger yet. As David says, this is my life: http://m.xkcd.com/1671/
-//        self.r_map = Box::into_raw(Box::new(LinkMap::default()));
+        self.r_map = Box::into_raw(Box::new(LinkMap::default()));
     }
 
     pub unsafe fn update (&self, state: State) {
@@ -118,9 +118,9 @@ impl Debug {
     }
 
     pub unsafe fn add_so (&mut self, so: &SharedObject) {
-        let so = LinkMap::from_so(so);
+        let lm = LinkMap::from_so(so);
         // this is not documented, but the debugger requires we append, and not cons (contrary to what you would think), since C programmers are all about the speeds - after all, who wants a constant prepend when you can have a linear append?
-        LinkMap::append(so, self.r_map);
+        LinkMap::append(lm, self.r_map);
     }
 }
 
