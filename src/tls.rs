@@ -47,6 +47,9 @@ pub struct __libc {
 
 extern {
     pub static mut __libc: __libc;
+    /// TLS init function which needs a pointer to aux vector indexed by AT_<TYPE> that musl likes
+    pub fn __init_tls(aux: *const u64);
+    static builtin_tls: *const u64;
 }
 
 // example of tls init structure for libc

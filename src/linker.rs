@@ -156,15 +156,6 @@ fn relocate_linker(bias: u64, relas: &[rela::Rela]) {
     }
 }
 
-extern {
-    /// TLS init function which needs a pointer to aux vector indexed by AT_<TYPE> that musl likes
-    fn __init_tls(aux: *const u64);
-    // added all this for testing  TLS is going to be horrible
-    fn __init_tp(p: *const u64);
-    fn __copy_tls(mem: *const u8);
-    static builtin_tls: *const u64;
-}
-
 /// The dynamic linker
 /// TODO: Change permissions on most of these fields
 pub struct Linker<'process> {
@@ -212,7 +203,7 @@ impl<'process> Linker<'process> {
                 let mut auxv = auxv::from_raw(block.auxv);
                 auxv[auxv::AT_PHDR as usize] = addr as u64;
 //                tls::Lachesis::init_from_phdrs(load_bias as usize, phdrs);
-                __init_tls(auxv.as_ptr()); // this _should_ be safe since vec only allocates and shouldn't access tls. maybe.
+                tls::__init_tls(auxv.as_ptr()); // this _should_ be safe since vec only allocates and shouldn't access tls. maybe.
 
                 // we relocated ourselves so it should be safe to init the gdb debug protocols, use global data, reference static strings, call sweet functions, etc.
                 utils::set_panic(); // set this as early as we can
@@ -621,7 +612,6 @@ impl<'process> Linker<'process> {
         if !self.config.secure && self.config.show_auxv {
             auxv::show(&self.auxv);
         }
-//        unsafe { ::tls::init_tls(self.lachesis.current_modid, &mut self.lachesis.modules); }
 
         type InitFn = fn (argc: isize, argv: *const *const u8, env: *const *const u8) -> ();
         for so in self.link_map.iter() {
@@ -643,11 +633,12 @@ impl<'process> Linker<'process> {
         }
 
         unsafe {
+//            unsafe { ::tls::init_tls(self.lachesis.current_modid, &mut self.lachesis.modules); }
 //            tls::Lachesis::init_from_phdrs(self.load_bias as usize, self.phdrs);
 // calling this with the program header of the entry runs it as normal
 // except since libc isn't properly initialized (__libc_malloc_initialized == 0), it tries to load dynamically and crashes since none of the rtld_global struct is setup :/
             let auxv = auxv::from_raw(block.auxv);
-            __init_tls(auxv.as_ptr()); // this _should_ be safe sin
+            tls::__init_tls(auxv.as_ptr()); // this _should_ be safe sin
         }
         mem::forget(self);
         Ok (())
