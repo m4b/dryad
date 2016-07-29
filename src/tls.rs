@@ -2,6 +2,7 @@ use libc;
 use std::cmp;
 use binary::elf::program_header;
 
+// TODO: this can all be removed later; is primarily for debugging internal state coming from static linking musl into ourselves
 #[allow(non_camel_case_types)]
 pub type size_t = ::std::os::raw::c_ulong;
 
@@ -28,6 +29,7 @@ pub struct tls_module {
     pub offset: size_t,
 }
 
+// this is our internal tls stuff + other random globals + other shit musl keeps as non-thread safe hidden globals no one knows about except me and 2 other people probably
 #[allow(non_camel_case_types)]
 #[repr(C)]
 #[derive(Debug)]
@@ -53,6 +55,7 @@ extern {
 }
 
 // example of tls init structure for libc
+// P.S. did you know there is massive global state floating around glibc (and hence every binary that uses it)? it's awesome
 /*
 l_tls_initimage = 0x7ffff7bb2788,
 l_tls_initimage_size = 16,
@@ -75,6 +78,7 @@ pub struct TlsInfo {
     pub image_size: usize,
 }
 
+// TODO: would have used this to create a more principled approach with most of the state, i.e., modids in Lachesis itself; a big todo
 impl TlsInfo {
     pub fn new (modid: u32, bias: usize, phdr: &program_header::ProgramHeader) -> TlsInfo {
         let blocksize = phdr.p_memsz as usize;
@@ -159,9 +163,7 @@ unsafe fn allocate_dtv (max_dtv_idx: u32, tls_storage: *mut libc::c_void) -> *mu
 }
 
 pub unsafe fn _dl_allocate_tls_storage (max_dtv_idx: u32, static_align: usize, static_size: usize, static_used: usize) -> *mut libc::c_void {
-
     // when DTV_AT_TP need to adjust static_size
-
     let mut result = libc::memalign(static_align, static_size);
     dbgc!(purple_bold: true, "tls", "_dl_allocate_tls_storage result: {:?}", result);
     let allocated = result; // to be used by free in case fails, unimplemented
@@ -221,7 +223,7 @@ pub unsafe fn allocate_tls_init (max_dtv_idx: u32, tls_storage: *mut libc::c_voi
     }
 
     dbgc!(purple_bold: true, "tls", "allocate_tls finished, setting dtv head to maxgen {} with tls storage: {:?}", maxgen, tls_storage);
-    // i believe this is a bug in glibc
+    // haven't figured this out; seems like a bug in glibc, but that would be impossible, right?
     // dtv[0].counter = maxgen
     // but dtv[-1] is the counter union ?
     *dtv = Dtv { val: maxgen as *mut libc::c_void, is_static: false};
@@ -346,6 +348,7 @@ pub const DL_NNS: libc::size_t = 16;
 pub const TLS_STATIC_SURPLUS: libc::size_t = 64 + DL_NNS * 100;
 pub const TLS_DTV_UNALLOCATED: *mut libc::c_void = 0xffffffffffffffff as *mut libc::c_void;
 
+// TODO: eventually replace musl's init_tls call with Lachesis and use it for our implementation
 /// https://en.wikipedia.org/wiki/Lachesis_(mythology)
 pub struct Lachesis {
     pub modules: Vec<SlotInfo>,
@@ -394,6 +397,7 @@ impl Lachesis {
         }
     }
 
+    // TODO: i thought of a more elegant approach than the crazy C version with seemingly random, unrelated names and a somewhat unprincipled approach; but first need to get the basic syscalls working and the thread pointer installed properly, etc. I've also forgotten what it was ;)
     pub fn push_module(&mut self, soname: &str, bias: usize, phdr: &program_header::ProgramHeader) -> TlsInfo {
         let modid = { self.current_modid += 1; self.current_modid }; // increment, this will probably need to be atomic
         let tls = TlsInfo::new(modid, bias, phdr);

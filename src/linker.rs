@@ -202,7 +202,8 @@ impl<'process> Linker<'process> {
                 // dryad has successfully relocated itself; time to init tls
                 let mut auxv = auxv::from_raw(block.auxv);
                 auxv[auxv::AT_PHDR as usize] = addr as u64;
-//                tls::Lachesis::init_from_phdrs(load_bias as usize, phdrs);
+                // again, one day we'll init lachesis and tls for the duration of dryad relocation+linking, using our custom hand-rolled TLS impl
+                // tls::Lachesis::init_from_phdrs(load_bias as usize, phdrs);
                 tls::__init_tls(auxv.as_ptr()); // this _should_ be safe since vec only allocates and shouldn't access tls. maybe.
 
                 // we relocated ourselves so it should be safe to init the gdb debug protocols, use global data, reference static strings, call sweet functions, etc.
@@ -633,12 +634,14 @@ impl<'process> Linker<'process> {
         }
 
         unsafe {
-//            unsafe { ::tls::init_tls(self.lachesis.current_modid, &mut self.lachesis.modules); }
-//            tls::Lachesis::init_from_phdrs(self.load_bias as usize, self.phdrs);
+            // one day we will init_tls using lachesis - but it is not this day!
+            // // ::tls::init_tls(self.lachesis.current_modid, &mut self.lachesis.modules);
+            // this will be the cool way to do it
+            // tls::Lachesis::init_from_phdrs(self.load_bias as usize, self.phdrs);
 // calling this with the program header of the entry runs it as normal
 // except since libc isn't properly initialized (__libc_malloc_initialized == 0), it tries to load dynamically and crashes since none of the rtld_global struct is setup :/
             let auxv = auxv::from_raw(block.auxv);
-            tls::__init_tls(auxv.as_ptr()); // this _should_ be safe sin
+            tls::__init_tls(auxv.as_ptr());
         }
         mem::forget(self);
         Ok (())
