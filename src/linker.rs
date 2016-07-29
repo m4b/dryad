@@ -57,7 +57,7 @@ impl<'a> Config<'a> {
             var != "" } else { false };
         // because travis is a PoS
         let debug = if let Some (var) = block.getenv("LD_DRYAD_DEBUG") {
-            var == "1" } else { false };
+            var == "1" } else { true };
          // TODO: FIX THIS IS NOT VALID and massively unsafe
         let secure = block.getauxval(auxv::AT_SECURE).unwrap() != 0;
         // TODO: add different levels of verbosity
