@@ -89,7 +89,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
 
     // 1. Suck up the elf header on disk and construct the program headers
     let ehdr = header::Header::from_fd(fd).map_err(|e| format!("Error {:?}", e))?;
-    let phdrs = program_header::ProgramHeader::from_fd(fd, ehdr.e_phoff, ehdr.e_phnum as usize).map_err(|e| format!("Error {:?}", e))?;
+    let phdrs = program_header::ProgramHeader::from_fd(fd, ehdr.e_phoff, ehdr.e_phnum as usize, false).map_err(|e| format!("Error {:?}", e))?;
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias, end) = reserve_address_space(&phdrs)?;
