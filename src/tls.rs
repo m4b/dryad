@@ -1,6 +1,12 @@
+#[cfg(target_arch = "x86_64")]
+pub use goblin::elf64 as elf;
+
+#[cfg(target_arch = "x86")]
+pub use goblin::elf32 as elf;
+
 use libc;
 use std::cmp;
-use binary::elf::program_header;
+use elf::program_header;
 
 // TODO: this can all be removed later; is primarily for debugging internal state coming from static linking musl into ourselves
 #[allow(non_camel_case_types)]

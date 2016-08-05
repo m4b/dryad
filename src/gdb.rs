@@ -1,4 +1,10 @@
-use binary::elf::dyn;
+#[cfg(target_arch = "x86_64")]
+pub use goblin::elf64 as elf;
+
+#[cfg(target_arch = "x86")]
+pub use goblin::elf32 as elf;
+
+use elf::dyn;
 use image::SharedObject;
 use std::ffi::CString;
 use std::fmt;

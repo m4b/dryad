@@ -7,13 +7,13 @@ use std::os::raw::{c_int};
 
 use utils::{self, mmap, page};
 use image::SharedObject;
-use binary::elf::header;
-use binary::elf::program_header;
-use binary::elf::dyn;
-use binary::elf::sym;
-use binary::elf::rela;
-use binary::elf::strtab::Strtab;
-use binary::elf::gnu_hash::GnuHash;
+use elf::header;
+use elf::program_header;
+use elf::dyn;
+use elf::sym;
+use elf::rela;
+use elf::strtab::Strtab;
+use elf::gnu_hash::GnuHash;
 use tls;
 
 #[inline(always)]
@@ -69,7 +69,7 @@ fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u
 
 #[inline(always)]
 fn pflags_to_prot (x: u32) -> isize {
-    use binary::elf::program_header::{PF_X, PF_R, PF_W};
+    use elf::program_header::{PF_X, PF_R, PF_W};
 
     // I'm a dick for writing this/copying maniac C programmer implementations: but it checks the flag to see if it's the PF value,
     // and returns the appropriate mmap version, and logical ORs this for use in the mmap prot argument

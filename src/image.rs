@@ -6,13 +6,19 @@
 /// ```
 use std::fmt;
 
-use binary::elf::header::Header;
-use binary::elf::program_header::{self, ProgramHeader};
-use binary::elf::dyn::{self, Dyn};
-use binary::elf::sym::{self, Sym};
-use binary::elf::strtab::Strtab;
-use binary::elf::rela::{self, Rela};
-use binary::elf::gnu_hash::GnuHash;
+#[cfg(target_arch = "x86_64")]
+pub use goblin::elf64 as elf;
+
+#[cfg(target_arch = "x86")]
+pub use goblin::elf32 as elf;
+
+use elf::header::Header;
+use elf::program_header::{self, ProgramHeader};
+use elf::dyn::{self, Dyn};
+use elf::sym::{self, Sym};
+use elf::strtab::Strtab;
+use elf::rela::{self, Rela};
+use elf::gnu_hash::GnuHash;
 use tls;
 
 /// Computes the "load bias", which is normally the base.  However, in older Linux kernel's, 3.13, and whatever runs on travis, I have discovered that the kernel incorrectly maps the vdso with "bad" values.

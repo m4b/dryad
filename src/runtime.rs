@@ -1,6 +1,6 @@
 use image::SharedObject;
-use binary::elf::rela;
-use binary::elf::gnu_hash;
+use elf::rela;
+use elf::gnu_hash;
 use utils;
 
 extern {

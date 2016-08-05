@@ -15,14 +15,20 @@ use std::path::Path;
 
 extern crate crossbeam;
 
-use binary::elf::header::Header;
-use binary::elf::program_header::{self, ProgramHeader};
-use binary::elf::dyn;
-use binary::elf::rela;
-use binary::elf::sym;
+#[cfg(target_arch = "x86_64")]
+pub use goblin::elf64 as elf;
+
+#[cfg(target_arch = "x86")]
+pub use goblin::elf32 as elf;
+
+use elf::header::Header;
+use elf::program_header::{self, ProgramHeader};
+use elf::dyn;
+use elf::rela;
+use elf::sym;
 use loader;
 use image::{self, SharedObject};
-use binary::elf::gnu_hash;
+use elf::gnu_hash;
 
 use gdb;
 use utils;
@@ -371,7 +377,7 @@ impl<'process> Linker<'process> {
                         let tls = providing_so.tls.expect(&format!("Error: symbol \"{}\" required in {}, but the providing so {} does not have a TLS program header", name, so.name, providing_so.name));
                         // TODO: it should be the symbol value (= tls offset in that module) plus the addend + the tls offset into the dtv of that module; i don't think load bias is used at all here, as it will be a relative got load?
                         unsafe { *reloc = (symbol.st_value as i64 + rela.r_addend as i64 - tls.offset as i64) as u64; }
-                        dbgc!(purple_bold: self.config.debug, "tls", "bound {} \"{}\" required in {} to provider {} with address 0x{:x}", sym::get_type(&symbol), name, so.name, providing_so.name, unsafe { *reloc });
+                        dbgc!(purple_bold: self.config.debug, "tls", "bound {} \"{}\" required in {} to provider {} with address 0x{:x}", sym::get_type(symbol.st_info), name, so.name, providing_so.name, unsafe { *reloc });
                         count += 1;
                     }
                 },
