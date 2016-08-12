@@ -20,19 +20,19 @@ CARGO_DEPS=$(wildcard target/x86_64-unknown-linux-musl/debug/deps/*.rlib)
 RUSTLIBS := $(addprefix $(RUSTLIB), /libstd-$(RUSTHASH).rlib /libcore-$(RUSTHASH).rlib /librand-$(RUSTHASH).rlib /liballoc-$(RUSTHASH).rlib /libcollections-$(RUSTHASH).rlib /librustc_unicode-$(RUSTHASH).rlib /liballoc_system-$(RUSTHASH).rlib /libpanic_unwind-$(RUSTHASH).rlib /libunwind-$(RUSTHASH).rlib /libcompiler-rt.a /liblibc-$(RUSTHASH).rlib)
 
 SONAME=dryad.so.1
+LIBDRYAD=libdryad.a
 PT_INTERP=/tmp/${SONAME}
 
 LINK_ARGS := -pie --gc-sections -Bsymbolic --dynamic-list=${ETC}/dynamic-list.txt -I${PT_INTERP} -soname ${SONAME} -L${LIB}  -nostdlib -e _start
-#
 
-dryad.so.1: $(OUT_DIR)/libdryad.rlib
+dryad.so.1: $(OUT_DIR)/$(LIBDRYAD)
 	@printf "\33[0;4;33mlinking:\33[0m \33[0;32m$(SONAME)\33[0m with $(HASH)\n"
-	ld ${LINK_ARGS} -o ${SONAME} ${OUT_DIR}/libdryad.rlib ${RUSTLIBS} ${CARGO_DEPS}
+	ld ${LINK_ARGS} -o ${SONAME} ${OUT_DIR}/$(LIBDRYAD) ${RUSTLIBS} ${CARGO_DEPS}
 	cp ${SONAME} /tmp
 
-$(OUT_DIR)/libdryad.rlib: $(SRC)
+$(OUT_DIR)/$(LIBDRYAD): $(SRC)
 	@printf "\33[0;4;33mcompiling:\33[0m \33[1;32mdryad\33[0m\n"
-	$(CARGO) rustc $(COLOR) --verbose --target=$(TRIPLE) --lib -j 4
+	$(CARGO) rustc $(COLOR) --verbose --target=$(TRIPLE) --lib -j 4 -- #-C lto # uncomment this when lto is important
 
 #almost... but cargo/rustc refuses to compile dylibs with a musl target
 #link-args="-Wl,-pie,-I${PT_INTERP},-soname ${SONAME}, --gc-sections, -L${LIB}, -Bsymbolic, -nostdlib, -e _start, -o ${SONAME}, start.o, dryad.o, ${RUSTLIB}/libstd-$(RUSTHASH).rlib, ${RUSTLIB}/libcore-$(RUSTHASH).rlib, ${RUSTLIB}/librand-$(RUSTHASH).rlib, ${RUSTLIB}/liballoc-$(RUSTHASH).rlib, ${RUSTLIB}/libcollections-$(RUSTHASH).rlib, ${RUSTLIB}/librustc_unicode-$(RUSTHASH).rlib, ${RUSTLIB}/liballoc_system-$(RUSTHASH).rlib, ${RUSTLIB}/libcompiler-rt.a, ${RUSTLIB}/liblibc-$(RUSTHASH).rlib, ${CARGO_DEPS}"
@@ -67,7 +67,7 @@ tests: ${TESTS}
 
 link:
 	@printf "\33[0;4;33mlinking:\33[0m \33[0;32m$(SONAME)\33[0m with $(HASH)\n"
-	ld -Map=${ETC}/dryad.map ${LINK_ARGS} -o ${SONAME} ${OUT_DIR}/libdryad.rlib ${RUSTLIBS} ${CARGO_DEPS}
+	ld -Map=${ETC}/dryad.map ${LINK_ARGS} -o ${SONAME} ${OUT_DIR}/$(LIBDRYAD) ${RUSTLIBS} ${CARGO_DEPS}
 
 # make moves all day e'er day
 moves:

@@ -4,6 +4,9 @@ version = "0.1.2"
 authors = ["m4b <m4b.github.io@gmail.com>"]
 build = "build.rs"
 
+[lib]
+crate-type = ["staticlib"]
+
 [build-dependencies]
 gcc = "0.3"
 
