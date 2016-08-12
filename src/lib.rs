@@ -67,7 +67,7 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
             if block.argc >= 2 {
                 let binary = str_at(block.argv[1], 0);
                 println!("binary: {:?}", binary);
-                let elf = elf::Elf::from_path(::std::path::Path::new(binary)).expect(&format!("Cannot load binary {}", binary));
+                let elf = elf::Binary::from_path(::std::path::Path::new(binary)).expect(&format!("Cannot load binary {}", binary));
                 println!("{:#?}", elf);
                 0
             } else {
