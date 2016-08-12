@@ -1,5 +1,5 @@
 //#![crate_type="dylib"]
-#![feature(asm, libc, question_mark, panic_handler)]
+#![feature(asm, libc, question_mark)]
 
 #![allow(dead_code)] // yells about consts otherwise
 #![allow(unused_variables)]
