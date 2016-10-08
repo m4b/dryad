@@ -59,7 +59,6 @@ pub unsafe fn compute_load_bias_wrapping(base: u64, phdrs:&[ProgramHeader]) -> u
 /// 2. the vdso provided by the kernel
 /// 3. the executable we're interpreting
 pub struct SharedObject<'process> {
-    pub name: &'process str,
     pub load_bias: u64, // TODO: change to usize change this to addr or base_addr load_bias is stupid
     pub map_begin: u64, // probably remove these?
     pub map_end: u64,
@@ -82,11 +81,15 @@ pub struct SharedObject<'process> {
 impl<'process> fmt::Debug for SharedObject<'process> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "name: {} load_bias: {:x} DT_FLAGS: 0x{:x} DT_FLAGS_1 0x{:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Rela Table: {:#?}\n  Plt Rela Table: {:#?}\n  Libraries: {:#?}\n",
-               self.name, self.load_bias, self.flags, self.state_flags, self.phdrs, self.dynamic, self.strtab, self.symtab, self.relatab, self.pltrelatab, self.libs)
+               self.name(), self.load_bias, self.flags, self.state_flags, self.phdrs, self.dynamic, self.strtab, self.symtab, self.relatab, self.pltrelatab, self.libs)
     }
 }
 
 impl<'process> SharedObject<'process> {
+
+    pub fn name (&self) -> &str {
+        &self.strtab[self.link_info.soname]
+    }
 
     /// Assumes the object referenced by the ptr has already been mmap'd or loaded into memory some way
     pub unsafe fn from_raw (ptr: u64) -> SharedObject<'process> {
@@ -104,7 +107,6 @@ impl<'process> SharedObject<'process> {
         let pltgot = if let Some(addr) = link_info.pltgot { addr } else { 0 };
         let gnu_hash = if let Some(addr) = link_info.gnu_hash { Some (GnuHash::new(addr as *const u32, symtab.len())) } else { None };
         SharedObject {
-            name: strtab.get(link_info.soname),
             load_bias: ptr,
             map_begin: 0,
             map_end: 0,
@@ -168,7 +170,6 @@ impl<'process> SharedObject<'process> {
                 let pltgot = link_info.pltgot.expect("Error executable has no pltgot, aborting") as *const u64;
                 let gnu_hash = if let Some(addr) = link_info.gnu_hash { Some (GnuHash::new(addr as *const u32, symtab.len())) } else { None };
                 Ok (SharedObject {
-                    name: name,
                     load_bias: load_bias,
                     map_begin: 0,
                     map_end: 0,

@@ -230,9 +230,9 @@ impl<'process> Linker<'process> {
 
                 if let Some(vdso_addr) = block.getauxval(auxv::AT_SYSINFO_EHDR) {
                     let vdso = SharedObject::from_raw(vdso_addr);
-                    dbg!(config.debug, "loaded vdso {} at 0x{:x}", vdso.name, vdso.load_bias);
-                    link_map_order.push(vdso.name.to_string());
-                    working_set.insert(vdso.name.to_string(), vdso);
+                    dbg!(config.debug, "loaded vdso {} at 0x{:x}", vdso.name(), vdso.load_bias);
+                    link_map_order.push(vdso.name().to_string());
+                    working_set.insert(vdso.name().to_string(), vdso);
                 };
 
                 Ok (Linker {
@@ -374,10 +374,10 @@ impl<'process> Linker<'process> {
                 // (S + A) - offset
                 rela::R_X86_64_TPOFF64 => {
                     if let Some((symbol, providing_so)) = self.find_symbol(name) {
-                        let tls = providing_so.tls.expect(&format!("Error: symbol \"{}\" required in {}, but the providing so {} does not have a TLS program header", name, so.name, providing_so.name));
+                        let tls = providing_so.tls.expect(&format!("Error: symbol \"{}\" required in {}, but the providing so {} does not have a TLS program header", name, so.name(), providing_so.name()));
                         // TODO: it should be the symbol value (= tls offset in that module) plus the addend + the tls offset into the dtv of that module; i don't think load bias is used at all here, as it will be a relative got load?
                         unsafe { *reloc = (symbol.st_value as i64 + rela.r_addend as i64 - tls.offset as i64) as u64; }
-                        dbgc!(purple_bold: self.config.debug, "tls", "bound {} \"{}\" required in {} to provider {} with address 0x{:x}", sym::get_type(symbol.st_info), name, so.name, providing_so.name, unsafe { *reloc });
+                        dbgc!(purple_bold: self.config.debug, "tls", "bound {} \"{}\" required in {} to provider {} with address 0x{:x}", sym::get_type(symbol.st_info), name, so.name(), providing_so.name(), unsafe { *reloc });
                         count += 1;
                     }
                 },
@@ -404,9 +404,9 @@ impl<'process> Linker<'process> {
             }
         }
 
-        dbg!(self.config.debug, "relocated {} symbols in {}", count, &so.name);
+        dbg!(self.config.debug, "relocated {} symbols in {}", count, &so.name());
 
-        self.prepare_got(idx, so.pltgot, &so.name);
+        self.prepare_got(idx, so.pltgot, &so.name());
     }
 
     /// TODO: add check for if SO has the DT_BIND_NOW, and also other flags...
@@ -452,7 +452,7 @@ impl<'process> Linker<'process> {
                 _ => ()
             }
         }
-        dbg!(self.config.debug, "relocate plt: {} symbols for {}", count, so.name);
+        dbg!(self.config.debug, "relocate plt: {} symbols for {}", count, so.name());
     }
 
     /// TODO: rename to something like `load_all` to signify on return everything has loaded?
@@ -622,7 +622,7 @@ impl<'process> Linker<'process> {
 
         type InitFn = fn (argc: isize, argv: *const *const u8, env: *const *const u8) -> ();
         for so in self.link_map.iter() {
-//            dbg!(self.config.debug, "{}: init: 0x{:x} - 0x{:x} = 0x{:x}", so.name, so.link_info.init, so.load_bias, so.link_info.init.wrapping_sub(so.load_bias));
+//            dbg!(self.config.debug, "{}: init: 0x{:x} - 0x{:x} = 0x{:x}", so.name(), so.link_info.init, so.load_bias, so.link_info.init.wrapping_sub(so.load_bias));
             let (argc, argv, envp) = (block.argc, block.argv.as_ptr(), block.env.as_ptr());
             if so.link_info.init != 0 {
                 let init = unsafe { mem::transmute::<usize, InitFn>(so.link_info.init as usize)};

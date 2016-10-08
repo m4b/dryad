@@ -197,7 +197,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
     let strtab = unsafe { Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz as usize) };
 
     // now get the libs we will need
-    let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
+    let libs = unsafe { dyn::get_needed(dynamic, &strtab, link_info.needed_count) };
 
     // caveat about rdr doing this for hundres of binaries and it being "ok"
     let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM;
@@ -216,7 +216,6 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
     let gnu_hash = if let Some(addr) = link_info.gnu_hash { Some (GnuHash::new(addr as *const u32, symtab.len())) } else { None };
 
     let shared_object = SharedObject {
-        name: strtab.get(link_info.soname),
         load_bias: load_bias,
         libs: libs,
         map_begin: start,

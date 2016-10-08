@@ -17,7 +17,7 @@ CARGO=$(shell which cargo)
 # this needs better handling, a la discussion with ubsan and Mutabah
 CARGO_DEPS=$(wildcard target/x86_64-unknown-linux-musl/debug/deps/*.rlib)
 # this is a hack because of extra 300KB and segfaulting
-RUSTLIBS := $(addprefix $(RUSTLIB), /libstd-$(RUSTHASH).rlib /libcore-$(RUSTHASH).rlib /librand-$(RUSTHASH).rlib /liballoc-$(RUSTHASH).rlib /libcollections-$(RUSTHASH).rlib /librustc_unicode-$(RUSTHASH).rlib /liballoc_system-$(RUSTHASH).rlib /libpanic_unwind-$(RUSTHASH).rlib /libunwind-$(RUSTHASH).rlib /libcompiler-rt.a /liblibc-$(RUSTHASH).rlib)
+RUSTLIBS := $(addprefix $(RUSTLIB), /libstd-$(RUSTHASH).rlib /libcore-$(RUSTHASH).rlib /librand-$(RUSTHASH).rlib /liballoc-$(RUSTHASH).rlib /libcollections-$(RUSTHASH).rlib /librustc_unicode-$(RUSTHASH).rlib /liballoc_system-$(RUSTHASH).rlib /libpanic_unwind-$(RUSTHASH).rlib /libunwind-$(RUSTHASH).rlib /liblibc-$(RUSTHASH).rlib)
 
 SONAME=dryad.so.1
 LIBDRYAD=libdryad.a
