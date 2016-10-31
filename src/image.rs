@@ -100,7 +100,7 @@ impl<'process> SharedObject<'process> {
         let link_info = dyn::DynamicInfo::new(&dynamic, load_bias);
         let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM;
         let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
-        let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz as usize);
+        let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz as usize, 0x0);
         let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
         let relatab = rela::from_raw(link_info.rela as *const rela::Rela, link_info.relasz);
         let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);
@@ -161,7 +161,7 @@ impl<'process> SharedObject<'process> {
                 // TODO: swap out the link_info syment with compile time constant SIZEOF_SYM?
                 let num_syms = (link_info.strtab - link_info.symtab) / link_info.syment; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
                 let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
-                let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz);
+                let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz, 0x0);
                 let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
                 let relatab = rela::from_raw(link_info.rela as *const rela::Rela, link_info.relasz);
                 let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);

@@ -1,13 +1,13 @@
 use std::str;
 use std::slice;
 
-#[cfg(not(feature = "no_color"))]
+#[cfg(feature = "color")]
 macro_rules! colour {
     ($c:ident: $str:expr) =>
     (colorify!($c: $str))
 }
 
-#[cfg(feature = "no_color")]
+#[cfg(not(feature = "color"))]
 macro_rules! colour {
     ($c:ident: $str:expr) =>
         ($str)

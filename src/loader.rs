@@ -89,7 +89,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
 
     // 1. Suck up the elf header on disk and construct the program headers
     let ehdr = header::Header::from_fd(fd).map_err(|e| format!("Error {:?}", e))?;
-    let phdrs = program_header::ProgramHeader::from_fd(fd, ehdr.e_phoff, ehdr.e_phnum as usize, false).map_err(|e| format!("Error {:?}", e))?;
+    let phdrs = program_header::ProgramHeader::from_fd(fd, ehdr.e_phoff, ehdr.e_phnum as usize).map_err(|e| format!("Error {:?}", e))?;
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias, end) = reserve_address_space(&phdrs)?;
@@ -194,7 +194,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
     let link_info = dyn::DynamicInfo::new(&dynamic, load_bias as usize);
 
     // now get the strtab from the dynamic array
-    let strtab = unsafe { Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz as usize) };
+    let strtab = unsafe { Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz as usize, 0x0) };
 
     // now get the libs we will need
     let libs = unsafe { dyn::get_needed(dynamic, &strtab, link_info.needed_count) };

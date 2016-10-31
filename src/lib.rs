@@ -1,5 +1,5 @@
 //#![crate_type="dylib"]
-#![feature(asm, libc, question_mark)]
+#![feature(asm, libc)]
 
 #![allow(dead_code)] // yells about consts otherwise
 #![allow(unused_variables)]
@@ -67,8 +67,11 @@ pub extern fn dryad_init (raw_args: *const u64) -> u64 {
             if block.argc >= 2 {
                 let binary = str_at(block.argv[1], 0);
                 println!("binary: {:?}", binary);
-                let elf = elf::Binary::from_path(::std::path::Path::new(binary)).expect(&format!("Cannot load binary {}", binary));
-                println!("{:#?}", elf);
+                // this is not accessible to use right now because we don't use endian_fd;
+                // this is fine since we don't want to parse the binary anyway, we want to load it;
+                // but this functionality isn't quite supported yet, need to add better loader api to allow this,
+                // so for now, we will comment this out
+                // let elf = goblin::elf::Elf::from(Path::new(binary)).expect(&format!("Cannot load binary {}", binary));
                 0
             } else {
                 println!("usage: dryad <path/to/bin>");
