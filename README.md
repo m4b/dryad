@@ -13,13 +13,24 @@
 4. in a massive state of flux
 5. parallel might be a) impossible, b) not performant, but it will be interesting to try
 
-but ~~all~~ most of these things will disappear in time!
+~~but ~~all~~ most of these things will disappear in time!~~
+
+Work has stalled on this for a number of reasons, primarily as outlined [here](https://www.google.com/url?q=https%3A%2F%2Fgithub.com%2Fm4b%2Fdryad%2Fissues%2F5%23issuecomment-262696880&sa=D&sntz=1&usg=AFQjCNHKreL2aMzs1xwCuKnF2KMohHwOsw), but I tinker with it from now and then.
+
+I have some ideas to fix things, but so many things to work on!
+
+If you want to contribute, PRs or suggestions, comments, issues, always welcome :) If you want to hack on some other fun binary stuff, [goblin](https://github.com/m4b/goblin) or [cargo-sym](https://github.com/m4b/cargo-sym) could always use an extra hand or two.
 
 # Build
 
-**NOTE**: I am early adopting the new `rustup` [tool](https://www.rustup.rs/), and also now use a Makefile + experimental Cargo.
+You need to install `rustup` [tool](https://www.rustup.rs/), and then switch to nightly and add the musl target:
 
-Of course, you will need your typical build tools on a linux system, essentially:
+```
+rustup default nightly
+rustup target add x86_64-unknown-linux-musl
+```
+
+Of course, you will also need your typical build tools on a linux system, essentially:
 
 - `gcc` (or `clang`)
 - `ld` (or `ld.gold`)
@@ -29,34 +40,12 @@ Of course, you will need your typical build tools on a linux system, essentially
 
 Unfortunately, I currently do not support cross compiling at the moment (which is an unusual use case anyway), so you will need an x86-64 GNU/Linux machine, otherwise it will fail.
 
-Once that's settled, you have two options, both fairly easy.
-
-## Setup - Easy
-
-Just run `./setup.sh`, which will download and install the latest rust nightly and musl target into `~/.multirust`.
-
-You can then proceed as normal:
+Once that's settled you can then proceed as normal:
 
 1. `./gen_tests.sh` - builds the test binaries (do this once) (will add this as a make target soon)
 2. `make` - compiles `dryad.so.1` and copies it to `/tmp`
-3. `test/test` - runs the test binary `test`, whose `PT_INTERPRETER` is `/tmp/dryad.so.1`
-4. `make run` - runs `./dryad.so.1`, this _should_ run correctly without segfaulting, please file a bug if it does not.
-
-## Setup - Use Nightly Rust, slightly less easier
-
-If you don't want to use rustup, then setting up a build environment will require a little work: you will need a nightly rustc, a `x86_64-unknown-linux-musl` target, and the ability to edit a Makefile to change the environment variables.
-
-If the latest `rustc` is not installed, just download and use the latest version of rustup script to install the latest nightly with the musl target enabled, i.e. something like:
-
-```
-curl -sSf https://static.rust-lang.org/rustup.sh > rustup.sh
-chmod +x rustup.sh
-sudo ./rustup.sh --channel=nightly --with-target=x86_64-unknown-linux-musl
-```
-
-And then edit the appropriate variables in the `Makefile` to use `/usr/local` as the `$PREFIX` instead of `rust`, and probably some other things I'm forgetting about.
-
-You should be able to then compile and run as normal.
+3. `make run` - runs `./dryad.so.1`, this _should_ run correctly without segfaulting, please file a bug if it does not.
+4. `test/test` - runs the test binary `test`, whose `PT_INTERPRETER` is `/tmp/dryad.so.1`
 
 ## Compilation and Linking Requirements
 
