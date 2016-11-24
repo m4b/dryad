@@ -11,6 +11,7 @@ crate-type = ["staticlib"]
 gcc = "0.3"
 
 [dependencies]
+libc = "0.2"
 crossbeam = "0.2.9"
 syscall = "0.2.1"
 colorify = { version = "0.2.2", optional = true }
@@ -20,6 +21,6 @@ default = ["color"]
 color = ["colorify"]
 
 [dependencies.goblin]
-version = "0.0.5"
+version = "0.0.6"
 default-features = false
-features = ["std", "elf64", "elf32"]
+features = ["std", "elf64", "elf32", "endian_fd"]

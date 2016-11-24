@@ -1,5 +1,5 @@
 //#![crate_type="dylib"]
-#![feature(asm, libc)]
+#![feature(asm)]
 
 #![allow(dead_code)] // yells about consts otherwise
 #![allow(unused_variables)]
@@ -12,7 +12,7 @@
 
 #[macro_use] extern crate syscall;
 
-pub extern crate goblin;
+extern crate goblin;
 
 #[cfg(target_arch = "x86_64")]
 pub use goblin::elf64 as elf;
