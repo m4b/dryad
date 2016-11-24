@@ -1,6 +1,6 @@
 # Welcome
 
-[![Build Status](https://travis-ci.org/m4b/dryad.svg?branch=master)](https://travis-ci.org/m4b/dryad) [![Floobits Status](https://floobits.com/m4b/dryad.svg)](https://floobits.com/m4b/dryad/redirect) https://gitter.im/m4b/dryad
+[![Build Status](https://travis-ci.org/m4b/dryad.svg?branch=master)](https://travis-ci.org/m4b/dryad) [![Floobits Status](https://floobits.com/m4b/dryad.svg)](https://floobits.com/m4b/dryad/redirect)
 
 ![dryad](doc/dryad.jpg)
 
@@ -13,7 +13,7 @@
 4. in a massive state of flux
 5. parallel might be a) impossible, b) not performant, but it will be interesting to try
 
-~~but ~~all~~ most of these things will disappear in time!~~
+~~but all most of these things will disappear in time!~~
 
 Work has stalled on this for a number of reasons, primarily as outlined [here](https://www.google.com/url?q=https%3A%2F%2Fgithub.com%2Fm4b%2Fdryad%2Fissues%2F5%23issuecomment-262696880&sa=D&sntz=1&usg=AFQjCNHKreL2aMzs1xwCuKnF2KMohHwOsw), but I tinker with it from now and then.
 
