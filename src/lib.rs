@@ -14,10 +14,10 @@
 
 extern crate goblin;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(target_pointer_width = "64")]
 pub use goblin::elf64 as elf;
 
-#[cfg(target_arch = "x86")]
+#[cfg(target_pointer_width = "32")]
 pub use goblin::elf32 as elf;
 
 mod auxv;

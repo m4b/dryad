@@ -6,11 +6,8 @@ pub use goblin::elf32 as elf;
 
 use libc;
 use std::cmp;
+use std::ptr;
 use elf::program_header;
-
-// TODO: this can all be removed later; is primarily for debugging internal state coming from static linking musl into ourselves
-#[allow(non_camel_case_types)]
-pub type size_t = ::std::os::raw::c_ulong;
 
 #[allow(non_camel_case_types)]
 #[derive(Debug)]
@@ -28,11 +25,11 @@ pub struct Struct___locale_struct {
 #[derive(Debug)]
 pub struct tls_module {
     pub next: *mut tls_module,
-    pub image: *mut ::std::os::raw::c_void,
-    pub len: size_t,
-    pub size: size_t,
-    pub align: size_t,
-    pub offset: size_t,
+    pub image: *mut libc::c_void,
+    pub len: libc::size_t,
+    pub size: libc::size_t,
+    pub align: libc::size_t,
+    pub offset: libc::size_t,
 }
 
 // this is our internal tls stuff + other random globals + other shit musl keeps as non-thread safe hidden globals no one knows about except me and 2 other people probably
@@ -40,16 +37,16 @@ pub struct tls_module {
 #[repr(C)]
 #[derive(Debug)]
 pub struct __libc {
-    pub can_do_threads: ::std::os::raw::c_int,
-    pub threaded: ::std::os::raw::c_int,
-    pub secure: ::std::os::raw::c_int,
-    pub threads_minus_1: ::std::os::raw::c_int,
-    pub auxv: *mut size_t,
+    pub can_do_threads: libc::c_int,
+    pub threaded: libc::c_int,
+    pub secure: libc::c_int,
+    pub threads_minus_1: libc::c_int,
+    pub auxv: *mut libc::size_t,
     pub tls_head: *mut tls_module,
-    pub tls_size: size_t,
-    pub tls_align: size_t,
-    pub tls_cnt: size_t,
-    pub page_size: size_t,
+    pub tls_size: libc::size_t,
+    pub tls_align: libc::size_t,
+    pub tls_cnt: libc::size_t,
+    pub page_size: libc::size_t,
     pub global_locale: Struct___locale_struct,
 }
 
@@ -164,7 +161,7 @@ unsafe fn allocate_dtv (max_dtv_idx: u32, tls_storage: *mut libc::c_void) -> *mu
         tls_storage
     } else {
         dbgc!(purple_bold: true, "tls", "allocate_dtv dtv is NULL");
-        ::std::ptr::null_mut::<libc::c_void>()
+        ptr::null_mut::<libc::c_void>()
     }
 }
 
@@ -216,7 +213,7 @@ pub unsafe fn allocate_tls_init (max_dtv_idx: u32, tls_storage: *mut libc::c_voi
             let dest = (tls_storage.offset(-info.offset as isize)) as *mut u8;
             let size = info.blocksize - info.image_size;
             dbgc!(purple_bold: true, "tls", "memset + memcpy: {:?} with size: {} and info.image 0x{:x} info.image_size {}", dest, size, info.image, info.image_size);
-            ::std::ptr::copy_nonoverlapping(dest, info.image as *mut u8, info.image_size);
+            ptr::copy_nonoverlapping(dest, info.image as *mut u8, info.image_size);
 //            libc::memcpy(dest, info.image, info.image_size);
             memset(dest, 0u8, size);
         }

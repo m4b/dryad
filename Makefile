@@ -15,7 +15,7 @@ CARGO=$(shell which cargo)
 # adds 300KB, 300 more runtime relocations, and segfaults the binary
 #RUSTLIBS=$(wildcard $(RUSTLIB)/*.rlib $(RUSTLIB)/*.a)
 # this needs better handling, a la discussion with ubsan and Mutabah
-CARGO_DEPS=$(wildcard target/x86_64-unknown-linux-musl/debug/deps/*.rlib)
+CARGO_DEPS=$(wildcard target/$(TRIPLE)/debug/deps/*.rlib)
 # this is a hack because of extra 300KB and segfaulting
 RUSTLIBS := $(addprefix $(RUSTLIB), /libstd-$(RUSTHASH).rlib /libcore-$(RUSTHASH).rlib /librand-$(RUSTHASH).rlib /liballoc-$(RUSTHASH).rlib /libcollections-$(RUSTHASH).rlib /librustc_unicode-$(RUSTHASH).rlib /liballoc_system-$(RUSTHASH).rlib /libpanic_unwind-$(RUSTHASH).rlib /libunwind-$(RUSTHASH).rlib /liblibc-$(RUSTHASH).rlib)
 
@@ -38,7 +38,7 @@ $(OUT_DIR)/$(LIBDRYAD): $(SRC)
 #link-args="-Wl,-pie,-I${PT_INTERP},-soname ${SONAME}, --gc-sections, -L${LIB}, -Bsymbolic, -nostdlib, -e _start, -o ${SONAME}, start.o, dryad.o, ${RUSTLIB}/libstd-$(RUSTHASH).rlib, ${RUSTLIB}/libcore-$(RUSTHASH).rlib, ${RUSTLIB}/librand-$(RUSTHASH).rlib, ${RUSTLIB}/liballoc-$(RUSTHASH).rlib, ${RUSTLIB}/libcollections-$(RUSTHASH).rlib, ${RUSTLIB}/librustc_unicode-$(RUSTHASH).rlib, ${RUSTLIB}/liballoc_system-$(RUSTHASH).rlib, ${RUSTLIB}/libcompiler-rt.a, ${RUSTLIB}/liblibc-$(RUSTHASH).rlib, ${CARGO_DEPS}"
 
 clean:
-	cargo clean
+	$(CARGO) clean
 	rm ${SONAME}
 
 run: dryad.so.1
