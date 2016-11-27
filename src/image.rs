@@ -59,7 +59,7 @@ pub unsafe fn compute_load_bias_wrapping(base: u64, phdrs:&[ProgramHeader]) -> u
 /// 2. the vdso provided by the kernel
 /// 3. the executable we're interpreting
 pub struct SharedObject<'process> {
-    pub load_bias: u64, // TODO: change to usize change this to addr or base_addr load_bias is stupid
+    pub load_bias: u64,
     pub map_begin: u64, // probably remove these?
     pub map_end: u64,
     pub libs: Vec<&'process str>,
@@ -85,6 +85,14 @@ impl<'process> fmt::Debug for SharedObject<'process> {
     }
 }
 
+macro_rules! gnu_hash {
+    ($link_info:ident, $symtab:ident) => {
+        if let Some(addr) = $link_info.gnu_hash {
+            Some (GnuHash::new(addr as *const u32, $symtab.len(), $symtab))
+        } else { None }
+    }
+}
+
 impl<'process> SharedObject<'process> {
 
     pub fn name (&self) -> &str {
@@ -105,7 +113,6 @@ impl<'process> SharedObject<'process> {
         let relatab = rela::from_raw(link_info.rela as *const rela::Rela, link_info.relasz);
         let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);
         let pltgot = if let Some(addr) = link_info.pltgot { addr } else { 0 };
-        let gnu_hash = if let Some(addr) = link_info.gnu_hash { Some (GnuHash::new(addr as *const u32, symtab.len())) } else { None };
         SharedObject {
             load_bias: ptr,
             map_begin: 0,
@@ -118,7 +125,7 @@ impl<'process> SharedObject<'process> {
             relatab: relatab,
             pltrelatab: pltrelatab,
             pltgot: pltgot as *const u64,
-            gnu_hash: gnu_hash,
+            gnu_hash: gnu_hash!(link_info, symtab),
             load_path: None,
             flags: link_info.flags,
             state_flags: link_info.flags_1,
@@ -168,7 +175,6 @@ impl<'process> SharedObject<'process> {
 
                 // TODO: fail with Err, not panic
                 let pltgot = link_info.pltgot.expect("Error executable has no pltgot, aborting") as *const u64;
-                let gnu_hash = if let Some(addr) = link_info.gnu_hash { Some (GnuHash::new(addr as *const u32, symtab.len())) } else { None };
                 Ok (SharedObject {
                     load_bias: load_bias,
                     map_begin: 0,
@@ -181,7 +187,7 @@ impl<'process> SharedObject<'process> {
                     relatab: relatab,
                     pltrelatab: pltrelatab,
                     pltgot: pltgot,
-                    gnu_hash: gnu_hash,
+                    gnu_hash: gnu_hash!(link_info, symtab),
                     load_path: Some (name.to_string()), // TODO: make absolute?,
                     flags: link_info.flags,
                     state_flags: link_info.flags_1,
@@ -196,10 +202,10 @@ impl<'process> SharedObject<'process> {
     }
 
     /// This is used by dryad's runtime symbol resolution
-    pub fn find (&self, name: &str, hash: u32) -> Option<sym::Sym> {
+    pub fn find (&self, name: &str, hash: u32) -> Option<&sym::Sym> {
 //        println!("<{}.find> finding symbol: {}", self.name, symbol);
         match self.gnu_hash {
-            Some (ref gnu_hash) => gnu_hash.find(name, hash, &self.strtab, &self.symtab),
+            Some (ref gnu_hash) => gnu_hash.find(name, hash, &self.strtab),
             None => None
         }
     }

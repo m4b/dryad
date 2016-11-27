@@ -258,7 +258,7 @@ impl<'process> Linker<'process> {
     }
 
     /// Maybe returns the symbol which matches the name, and the SharedObject in which was found
-    fn find_symbol(&self, name: &str) -> Option<(sym::Sym, &SharedObject)> {
+    fn find_symbol(&self, name: &str) -> Option<(&sym::Sym, &SharedObject)> {
         // actually, this is an unfair optimization; the library might use a different hash system, like sysv
         // in which case we can't pre-hash using gnu_hash, unless we assume every lib uses gnu_hash :/
         let hash = gnu_hash::hash(name);

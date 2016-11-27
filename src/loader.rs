@@ -213,7 +213,9 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
     let pltgot = if let Some(addr) = link_info.pltgot { addr } else { 0 }; // musl doesn't have a PLTGOT, for example
 
     // and finally grab the gnu_hash (if it has one)
-    let gnu_hash = if let Some(addr) = link_info.gnu_hash { Some (GnuHash::new(addr as *const u32, symtab.len())) } else { None };
+    let gnu_hash = if let Some(addr) = link_info.gnu_hash {
+        Some (unsafe { GnuHash::new(addr as *const u32, symtab.len(), symtab) })
+    } else { None };
 
     let shared_object = SharedObject {
         load_bias: load_bias,
