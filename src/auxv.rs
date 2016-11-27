@@ -1,60 +1,60 @@
-pub const AT_NULL: u64 = 0;
-pub const AT_IGNORE: u64 = 1;
-pub const AT_EXECFD: u64 = 2;
-pub const AT_PHDR: u64 = 3;
-pub const AT_PHENT: u64 = 4;
-pub const AT_PHNUM: u64 = 5;
-pub const AT_PAGESZ: u64 = 6;
-pub const AT_BASE: u64 = 7;
-pub const AT_FLAGS: u64 = 8;
-pub const AT_ENTRY: u64 = 9;
-pub const AT_NOTELF: u64 = 10;
-pub const AT_UID: u64 = 11;
-pub const AT_EUID: u64 = 12;
-pub const AT_GID: u64 = 13;
-pub const AT_EGID: u64 = 14;
-pub const AT_PLATFORM: u64 = 15;
-pub const AT_HWCAP: u64 = 16;
-pub const AT_CLKTCK: u64 = 17;
-pub const AT_FPUCW: u64 = 18;
-pub const AT_DCACHEBSIZE: u64 = 19;
-pub const AT_ICACHEBSIZE: u64 = 20;
-pub const AT_UCACHEBSIZE: u64 = 21;
-pub const AT_IGNOREPPC: u64 = 22;
-pub const AT_SECURE: u64 = 23;
-pub const AT_BASE_PLATFORM: u64 = 24;
-pub const AT_RANDOM: u64 = 25;
-pub const AT_HWCAP2: u64 = 26;
-pub const AT_EXECFN: u64 = 31;
-pub const AT_SYSINFO: u64 = 32;
-pub const AT_SYSINFO_EHDR: u64 = 33;
-pub const AT_L1I_CACHESHAPE: u64 = 34;
-pub const AT_L1D_CACHESHAPE: u64 = 35;
-pub const AT_L2_CACHESHAPE: u64 = 36;
-pub const AT_L3_CACHESHAPE: u64 = 37;
+pub const AT_NULL: usize = 0;
+pub const AT_IGNORE: usize = 1;
+pub const AT_EXECFD: usize = 2;
+pub const AT_PHDR: usize = 3;
+pub const AT_PHENT: usize = 4;
+pub const AT_PHNUM: usize = 5;
+pub const AT_PAGESZ: usize = 6;
+pub const AT_BASE: usize = 7;
+pub const AT_FLAGS: usize = 8;
+pub const AT_ENTRY: usize = 9;
+pub const AT_NOTELF: usize = 10;
+pub const AT_UID: usize = 11;
+pub const AT_EUID: usize = 12;
+pub const AT_GID: usize = 13;
+pub const AT_EGID: usize = 14;
+pub const AT_PLATFORM: usize = 15;
+pub const AT_HWCAP: usize = 16;
+pub const AT_CLKTCK: usize = 17;
+pub const AT_FPUCW: usize = 18;
+pub const AT_DCACHEBSIZE: usize = 19;
+pub const AT_ICACHEBSIZE: usize = 20;
+pub const AT_UCACHEBSIZE: usize = 21;
+pub const AT_IGNOREPPC: usize = 22;
+pub const AT_SECURE: usize = 23;
+pub const AT_BASE_PLATFORM: usize = 24;
+pub const AT_RANDOM: usize = 25;
+pub const AT_HWCAP2: usize = 26;
+pub const AT_EXECFN: usize = 31;
+pub const AT_SYSINFO: usize = 32;
+pub const AT_SYSINFO_EHDR: usize = 33;
+pub const AT_L1I_CACHESHAPE: usize = 34;
+pub const AT_L1D_CACHESHAPE: usize = 35;
+pub const AT_L2_CACHESHAPE: usize = 36;
+pub const AT_L3_CACHESHAPE: usize = 37;
 
 pub const AUX_CNT: usize = 38;
 
 #[repr(C)]
 pub struct Auxv {
-    pub a_type: u64,
-    pub a_val: u64
+    pub a_type: usize,
+    pub a_val: usize
 }
 
-pub unsafe fn from_raw (auxv: *const Auxv) -> Vec<u64> {
-    let mut aux: Vec<u64> = vec![0; AUX_CNT];
+pub unsafe fn from_raw (auxv: *const Auxv) -> Vec<usize> {
+    let mut aux: Vec<usize> = vec![0; AUX_CNT];
     let mut i: isize = 0;
     while (&*auxv.offset(i)).a_val != AT_NULL {
         let auxv_t = &*auxv.offset(i);
         // musl wants the aux a_val array to be indexed by AT_<TYPE>
-        aux[auxv_t.a_type as usize] = auxv_t.a_val;
+        aux[auxv_t.a_type] = auxv_t.a_val;
         i += 1;
     }
     aux
 }
 
 #[inline(always)]
-fn str_of_idx (idx: u64) -> &'static str {
+fn str_of_idx (idx: usize) -> &'static str {
     match idx {
         AT_NULL => "AT_NULL",
         AT_IGNORE => "AT_IGNORE",
@@ -94,10 +94,10 @@ fn str_of_idx (idx: u64) -> &'static str {
     }
 }
 
-pub fn show (auxvs: &Vec<u64>) {
+pub fn show (auxvs: &Vec<usize>) {
     for (i, auxv) in auxvs.iter().enumerate() {
         if *auxv != 0 {
-            println!("{}: 0x{:x}", str_of_idx(i as u64), auxv)
+            println!("{}: 0x{:x}", str_of_idx(i), auxv)
         }
     }
 }

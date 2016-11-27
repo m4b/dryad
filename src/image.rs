@@ -5,13 +5,6 @@
 /// #define ELF_MACHINE_NO_RELA 0
 /// ```
 use std::fmt;
-
-#[cfg(target_arch = "x86_64")]
-pub use goblin::elf64 as elf;
-
-#[cfg(target_arch = "x86")]
-pub use goblin::elf32 as elf;
-
 use elf::header::Header;
 use elf::program_header::{self, ProgramHeader};
 use elf::dyn::{self, Dyn};
@@ -45,10 +38,10 @@ use tls;
 /// On my machine with `4.4.5-1-ARCH`, the computed load bias will equal itself, and subsequent additions of sane `p_vaddr` values will work as expected.
 /// As for why the above is the case on older kernels (or perhaps VMs only, I haven't tested extensively), I have no idea.
 #[inline(always)]
-pub unsafe fn compute_load_bias_wrapping(base: u64, phdrs:&[ProgramHeader]) -> usize {
+pub unsafe fn compute_load_bias_wrapping(base: usize, phdrs:&[ProgramHeader]) -> usize {
     for phdr in phdrs {
         if phdr.p_type == program_header::PT_LOAD {
-            return base.wrapping_sub(phdr.p_vaddr.wrapping_add(phdr.p_offset)) as usize;
+            return base.wrapping_sub(phdr.p_vaddr.wrapping_add(phdr.p_offset) as usize);
         }
     }
     0
@@ -59,9 +52,9 @@ pub unsafe fn compute_load_bias_wrapping(base: u64, phdrs:&[ProgramHeader]) -> u
 /// 2. the vdso provided by the kernel
 /// 3. the executable we're interpreting
 pub struct SharedObject<'process> {
-    pub load_bias: u64,
-    pub map_begin: u64, // probably remove these?
-    pub map_end: u64,
+    pub load_bias: usize,
+    pub map_begin: usize, // probably remove these?
+    pub map_end: usize,
     pub libs: Vec<&'process str>,
     pub phdrs: &'process[ProgramHeader],
     pub dynamic: &'process [Dyn],
@@ -69,11 +62,11 @@ pub struct SharedObject<'process> {
     pub symtab: &'process[Sym],
     pub relatab: &'process[Rela],
     pub pltrelatab: &'process[Rela],
-    pub pltgot: *const u64,
+    pub pltgot: *const usize,
     pub gnu_hash: Option<GnuHash<'process>>,
     pub load_path: Option<String>,
-    pub flags: u64,
-    pub state_flags: u64,
+    pub flags: usize,
+    pub state_flags: usize,
     pub tls: Option<tls::TlsInfo>,
     pub link_info: dyn::DynamicInfo,
 }
@@ -100,11 +93,11 @@ impl<'process> SharedObject<'process> {
     }
 
     /// Assumes the object referenced by the ptr has already been mmap'd or loaded into memory some way
-    pub unsafe fn from_raw (ptr: u64) -> SharedObject<'process> {
+    pub unsafe fn from_raw (ptr: usize) -> SharedObject<'process> {
         let header = &*(ptr as *const Header);
-        let phdrs = ProgramHeader::from_raw_parts((header.e_phoff + ptr) as *const ProgramHeader, header.e_phnum as usize);
+        let phdrs = ProgramHeader::from_raw_parts((header.e_phoff as usize + ptr) as *const ProgramHeader, header.e_phnum as usize);
         let load_bias = compute_load_bias_wrapping(ptr, &phdrs);
-        let dynamic = dyn::from_phdrs(load_bias as u64, phdrs).unwrap();
+        let dynamic = dyn::from_phdrs(load_bias, phdrs).unwrap();
         let link_info = dyn::DynamicInfo::new(&dynamic, load_bias);
         let num_syms = (link_info.strtab - link_info.symtab) / sym::SIZEOF_SYM;
         let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
@@ -124,32 +117,32 @@ impl<'process> SharedObject<'process> {
             strtab: strtab,
             relatab: relatab,
             pltrelatab: pltrelatab,
-            pltgot: pltgot as *const u64,
+            pltgot: pltgot as *const usize,
             gnu_hash: gnu_hash!(link_info, symtab),
             load_path: None,
-            flags: link_info.flags,
-            state_flags: link_info.flags_1,
+            flags: link_info.flags as usize,
+            state_flags: link_info.flags_1 as usize,
             tls: None, // TODO: should probably check for tls, even tho this currently only used for linux gate
             link_info: link_info,
         }
 
     }
 
-    pub fn from_executable (name: &'static str, phdr_addr: u64, phnum: usize, lachesis: &mut tls::Lachesis) -> Result<SharedObject<'process>, String> {
+    pub fn from_executable (name: &'static str, phdr_addr: usize, phnum: usize, lachesis: &mut tls::Lachesis) -> Result<SharedObject<'process>, String> {
         unsafe {
             let addr = phdr_addr as *const ProgramHeader;
             let phdrs = ProgramHeader::from_raw_parts(addr, phnum);
 
-            let mut load_bias = 0;
+            let mut load_bias = 0usize;
             let mut dynamic_vaddr = None;
             let mut tls_phdr = None;
             for phdr in phdrs {
                 match phdr.p_type {
                     program_header::PT_PHDR => {
-                        load_bias = phdr_addr - phdr.p_vaddr;
+                        load_bias = phdr_addr - phdr.p_vaddr as usize;
                     },
                     program_header::PT_DYNAMIC => {
-                        dynamic_vaddr = Some(phdr.p_vaddr);
+                        dynamic_vaddr = Some(phdr.p_vaddr as usize);
                     },
                     program_header::PT_TLS => {
                         tls_phdr = Some(phdr);
@@ -159,12 +152,12 @@ impl<'process> SharedObject<'process> {
             }
 
             let tls = if let Some(phdr) = tls_phdr {
-                Some(lachesis.push_module(name, load_bias as usize, phdr))
+                Some(lachesis.push_module(name, load_bias, phdr))
             } else { None };
 
             if let Some(vaddr) = dynamic_vaddr {
                 let dynamic = dyn::from_raw(load_bias, vaddr);
-                let link_info = dyn::DynamicInfo::new(dynamic, load_bias as usize);
+                let link_info = dyn::DynamicInfo::new(dynamic, load_bias);
                 // TODO: swap out the link_info syment with compile time constant SIZEOF_SYM?
                 let num_syms = (link_info.strtab - link_info.symtab) / link_info.syment; // this _CAN'T_ generally be valid; but rdr has been doing it and scans every linux shared object binary without issue... so it must be right!
                 let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
@@ -174,7 +167,7 @@ impl<'process> SharedObject<'process> {
                 let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);
 
                 // TODO: fail with Err, not panic
-                let pltgot = link_info.pltgot.expect("Error executable has no pltgot, aborting") as *const u64;
+                let pltgot = link_info.pltgot.expect("Error executable has no pltgot, aborting") as *const usize;
                 Ok (SharedObject {
                     load_bias: load_bias,
                     map_begin: 0,
@@ -189,8 +182,8 @@ impl<'process> SharedObject<'process> {
                     pltgot: pltgot,
                     gnu_hash: gnu_hash!(link_info, symtab),
                     load_path: Some (name.to_string()), // TODO: make absolute?,
-                    flags: link_info.flags,
-                    state_flags: link_info.flags_1,
+                    flags: link_info.flags as usize,
+                    state_flags: link_info.flags_1 as usize,
                     tls: tls,
                     link_info: link_info,
                 })

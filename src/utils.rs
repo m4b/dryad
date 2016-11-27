@@ -49,6 +49,7 @@ macro_rules! dbgc {
 
 
 pub fn _exit(code: u64) {
+    #[cfg(target_arch = "x86_64")]
     unsafe {
         asm!("movq $$60, %rax
               syscall"
@@ -59,6 +60,7 @@ pub fn _exit(code: u64) {
 }
 
 fn asm_write(msg: *const u8, len: u64){
+    #[cfg(target_arch = "x86_64")]
     unsafe {
         asm!("\
               mov %rsi, %rdx
@@ -207,24 +209,24 @@ pub fn set_panic () {
 
 pub mod page {
    // from <sys/user.h>
-    pub const PAGE_SHIFT: u64    = 12;
-    pub const PAGE_SIZE: u64     = 1 << PAGE_SHIFT;
-    const PAGE_SIZE_MINUS_1: u64 = PAGE_SIZE - 1;
-    pub const PAGE_MASK: u64     = !PAGE_SIZE_MINUS_1;
+    pub const PAGE_SHIFT: usize    = 12;
+    pub const PAGE_SIZE: usize     = 1 << PAGE_SHIFT;
+    const PAGE_SIZE_MINUS_1: usize = PAGE_SIZE - 1;
+    pub const PAGE_MASK: usize     = !PAGE_SIZE_MINUS_1;
 
     // from bionic
     /// Returns the address of the page containing address 'x'.
     #[inline(always)]
-    pub fn page_start (x: u64) -> u64 { x & PAGE_MASK }
+    pub fn page_start (x: usize) -> usize { x & PAGE_MASK }
 
     /// Returns the offset of address 'x' in its page.
     #[inline(always)]
-    pub fn page_offset (x: u64) -> u64 { x & PAGE_SIZE_MINUS_1 }
+    pub fn page_offset (x: usize) -> usize { x & PAGE_SIZE_MINUS_1 }
 
     /// Returns the address of the next page after address 'x', unless 'x' is
     /// itself at the start of a page.
     #[inline(always)]
-    pub fn page_end (x: u64) -> u64 { page_start(x + PAGE_SIZE_MINUS_1) }
+    pub fn page_end (x: usize) -> usize { page_start(x + PAGE_SIZE_MINUS_1) }
 
     #[test]
     fn t_page_start () {
@@ -234,7 +236,7 @@ pub mod page {
 }
 
 pub mod mmap {
-    use std::os::raw::{c_int};
+    use libc;
     use std::fs::File;
     use std::os::unix::io::AsRawFd;
 
@@ -258,24 +260,24 @@ pub mod mmap {
     pub const MAP_FIXED: isize = 0x10; // Interpret addr exactly
 
     /// map failed, from sys/mman.h, technically ((void *) - 1) ...
-    pub const MAP_FAILED: u64 = !0;
+    pub const MAP_FAILED: usize = !0;
 
     // from musl libc
     extern {
-        fn mmap64(addr: *const u64, len: usize, prot: isize, flags: c_int, fildes: c_int, off: usize) -> u64;
+        fn mmap64(addr: *const usize, len: usize, prot: isize, flags: libc::c_int, fildes: libc::c_int, off: usize) -> usize;
     }
 
     #[inline(always)]
-    pub unsafe fn mmap(addr: *const u64, len: usize, prot: isize, flags: c_int, fildes: c_int, off: usize) -> u64 {
+    pub unsafe fn mmap(addr: *const usize, len: usize, prot: isize, flags: libc::c_int, fildes: libc::c_int, off: usize) -> usize {
         mmap64(addr, len, prot, flags, fildes, off)
     }
 
     #[inline(always)]
-    fn map_fragment(fd: &File, base: u64, offset: u64, size: usize) -> Result<(u64, usize, *const u64), String> {
+    fn map_fragment(fd: &File, base: usize, offset: usize, size: usize) -> Result<(usize, usize, *const usize), String> {
         use utils::page;
         let offset = base + offset;
         let page_min = page::page_start(offset);
-        let end_offset = offset + size as u64;
+        let end_offset = offset + size as usize;
         let end_offset = end_offset + page::page_offset(offset);
 
         let map_size: usize = (end_offset - page_min) as usize;
@@ -284,11 +286,11 @@ pub mod mmap {
             return Err (format!("Error: file {:#?} has map_size = {} < size = {}, aborting", fd, map_size, size))
         }
 
-        let map_start = unsafe { mmap(0 as *const u64,
+        let map_start = unsafe { mmap(0 as *const usize,
                                             map_size,
                                             PROT_READ,
-                                            MAP_PRIVATE as c_int,
-                                            fd.as_raw_fd() as c_int,
+                                            MAP_PRIVATE as libc::c_int,
+                                            fd.as_raw_fd() as libc::c_int,
                                             page_min as usize) };
 
         if map_start == MAP_FAILED {
@@ -297,7 +299,7 @@ pub mod mmap {
 
         } else {
 
-            let data = (map_start + page::page_offset(offset)) as *const u64;
+            let data = (map_start + page::page_offset(offset)) as *const usize;
             Ok ((map_start, map_size, data))
         }
     }

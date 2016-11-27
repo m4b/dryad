@@ -3,7 +3,7 @@
 
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
-use std::os::raw::{c_int};
+use libc;
 
 use utils::{self, mmap, page};
 use image::SharedObject;
@@ -17,7 +17,7 @@ use elf::gnu_hash::GnuHash;
 use tls;
 
 #[inline(always)]
-fn compute_load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u64) {
+fn compute_load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, usize, usize) {
     let mut max_vaddr = 0;
     let mut min_vaddr = 0;
     for phdr in phdrs {
@@ -26,32 +26,34 @@ fn compute_load_size (phdrs: &[program_header::ProgramHeader]) -> (usize, u64, u
             continue
         }
 
-        if phdr.p_vaddr < min_vaddr {
-            min_vaddr = phdr.p_vaddr;
+        let tmp = phdr.p_vaddr as usize;
+        if  tmp < min_vaddr {
+            min_vaddr = tmp;
         }
 
-        if phdr.p_vaddr + phdr.p_memsz > max_vaddr {
-            max_vaddr = phdr.p_vaddr + phdr.p_memsz;
+        let tmp = (phdr.p_vaddr + phdr.p_memsz) as usize;
+        if tmp > max_vaddr {
+            max_vaddr = tmp;
         }
     }
 
     min_vaddr = page::page_start(min_vaddr);
     max_vaddr = page::page_end(max_vaddr);
 
-    ((max_vaddr - min_vaddr) as usize, min_vaddr, max_vaddr)
+    ((max_vaddr - min_vaddr), min_vaddr, max_vaddr)
 }
 
 #[inline(always)]
-fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u64, u64, u64), String> {
+fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(usize, usize, usize), String> {
 
     let (size, min_vaddr, max_vaddr) = compute_load_size(&phdrs);
 
     let mmap_flags = mmap::MAP_PRIVATE | mmap::MAP_ANONYMOUS;
-    let start = unsafe { mmap::mmap(0 as *const u64,
+    let start = unsafe { mmap::mmap(0 as *const usize,
                                     size,
                                     // for now, using PROT_NONE seems to give SEGV_ACCERR on execution of PT_LOAD mmaped segments (i.e., operation not allowed on mapped object)
                                     mmap::PROT_EXEC | mmap::PROT_READ | mmap::PROT_WRITE,
-                                    mmap_flags as c_int,  // TODO: I think we should copy glibc's lead here and use their mmap flags
+                                    mmap_flags as libc::c_int,  // TODO: I think we should copy glibc's lead here and use their mmap flags
                                     -1,
                                     0) };
 
@@ -62,7 +64,7 @@ fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u
     } else {
 
         let load_bias = start - min_vaddr;
-        let end = start + size as u64;
+        let end = start + size;
         Ok ((start, load_bias, end))
     }
 }
@@ -89,7 +91,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
 
     // 1. Suck up the elf header on disk and construct the program headers
     let ehdr = header::Header::from_fd(fd).map_err(|e| format!("Error {:?}", e))?;
-    let phdrs = program_header::ProgramHeader::from_fd(fd, ehdr.e_phoff, ehdr.e_phnum as usize).map_err(|e| format!("Error {:?}", e))?;
+    let phdrs = program_header::ProgramHeader::from_fd(fd, ehdr.e_phoff as u64, ehdr.e_phnum as usize).map_err(|e| format!("Error {:?}", e))?;
 
     // 2. Reserve address space with anon mmap
     let (start, load_bias, end) = reserve_address_space(&phdrs)?;
@@ -99,7 +101,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
     // a. mmap the PT_LOAD program headers
     // b. collect the vaddrs of the phdrs and the dynamic array
     // c. TODO: mmap and setup TLS
-    let mut phdrs_vaddr = 0;
+    let mut phdrs_vaddr = 0usize;
     let mut dynamic_vaddr = None;
     let mut has_pt_load = false;
     let mut tls = None;
@@ -108,40 +110,40 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
         match phdr.p_type {
 
             program_header::PT_PHDR => {
-                phdrs_vaddr = phdr.p_vaddr;
+                phdrs_vaddr = phdr.p_vaddr as usize;
             },
 
             program_header::PT_DYNAMIC => {
-                dynamic_vaddr = Some(phdr.p_vaddr);
+                dynamic_vaddr = Some(phdr.p_vaddr as usize);
             },
 
             program_header::PT_TLS => {
                 // remove tls info completely out of the SharedObject?
-                tls = Some (lachesis.push_module(soname, load_bias as usize, &phdr));
+                tls = Some (lachesis.push_module(soname, load_bias, &phdr));
             },
 
             program_header::PT_LOAD => {
                 has_pt_load = true;
                 // Segment offsets: rounds down the segment start to a value suitable for mmaping, and adjusts the size of the 
                 // mmap breadth appropriately
-                let seg_start: u64 = phdr.p_vaddr + load_bias;
-                let seg_end: u64   = seg_start + phdr.p_memsz;
+                let seg_start = phdr.p_vaddr as usize + load_bias;
+                let seg_end = seg_start + phdr.p_memsz as usize;
 
-                let seg_page_start: u64 = page::page_start(seg_start);
-                let seg_page_end: u64   = page::page_start(seg_end);
+                let seg_page_start = page::page_start(seg_start);
+                let seg_page_end = page::page_start(seg_end);
 
                 // TODO: unused, I think we need to zero some stuff
-                let seg_file_end: u64 = seg_start + phdr.p_filesz;
+                let seg_file_end = seg_start + phdr.p_filesz as usize;
 
                 // File offsets.
-                let file_start: u64 = phdr.p_offset;
-                let file_end: u64   = file_start + phdr.p_filesz;
+                let file_start = phdr.p_offset as usize;
+                let file_end = file_start + phdr.p_filesz as usize;
 
                 // "rounds" to an mmap-able value (i.e., file_start % pagesize)
                 // file_page_start <= file_start
                 // so sometimes the beginning of the page is not the beginning of the PT_LOAD!
                 let file_page_start = page::page_start(file_start);
-                let file_length: u64 = file_end - file_page_start;
+                let file_length = file_end - file_page_start;
 
                 // TODO: add error checking, if file size <= 0, if file_end greater than file_size, etc.
 
@@ -151,11 +153,11 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
                     let mmap_flags = mmap::MAP_FIXED | mmap::MAP_PRIVATE;
                     let prot_flags = pflags_to_prot(phdr.p_flags);
                     unsafe {
-                        let start = mmap::mmap(seg_page_start as *const u64,
+                        let start = mmap::mmap(seg_page_start as *const usize,
                                                file_length as usize,
                                                prot_flags,
-                                               mmap_flags as c_int,
-                                               fd.as_raw_fd() as c_int,
+                                               mmap_flags as libc::c_int,
+                                               fd.as_raw_fd() as libc::c_int,
                                                file_page_start as usize);
 
                         if start == mmap::MAP_FAILED {
@@ -228,11 +230,11 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
         strtab: strtab,
         relatab: relatab,
         pltrelatab: pltrelatab,
-        pltgot: pltgot as *const u64,
+        pltgot: pltgot as *const usize,
         gnu_hash: gnu_hash,
         load_path: Some (load_path),
-        flags: link_info.flags,
-        state_flags: link_info.flags_1,
+        flags: link_info.flags as usize,
+        state_flags: link_info.flags_1 as usize,
         tls: tls,
         link_info: link_info,
     };

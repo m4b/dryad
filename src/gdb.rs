@@ -1,9 +1,4 @@
-#[cfg(target_arch = "x86_64")]
-pub use goblin::elf64 as elf;
-
-#[cfg(target_arch = "x86")]
-pub use goblin::elf32 as elf;
-
+use libc;
 use elf::dyn;
 use image::SharedObject;
 use std::ffi::CString;
@@ -24,8 +19,8 @@ pub enum State {
 #[repr(C)]
 #[derive(Copy)]
 pub struct LinkMap {
-    pub l_addr: u64,
-    pub l_name: *const ::std::os::raw::c_char,
+    pub l_addr: usize,
+    pub l_name: *const libc::c_char,
     pub l_ld: *const dyn::Dyn,
     pub l_next: *mut LinkMap,
     pub l_prev: *mut LinkMap,
@@ -48,7 +43,7 @@ impl fmt::Debug for LinkMap {
 
 impl LinkMap {
 
-    pub fn new (addr: u64, path: &str, dynamic: &[dyn::Dyn]) -> LinkMap {
+    pub fn new (addr: usize, path: &str, dynamic: &[dyn::Dyn]) -> LinkMap {
         let l_name = CString::new(path).unwrap().into_raw();
 
         LinkMap {
@@ -69,7 +64,7 @@ impl LinkMap {
 
         Box::into_raw(Box::new(LinkMap {
             l_addr: so.load_bias,
-            l_name: l_name as *const ::std::os::raw::c_char,
+            l_name: l_name as *const libc::c_char,
             l_ld: so.dynamic.as_ptr(),
             l_next: 0 as *mut LinkMap,
             l_prev: 0 as *mut LinkMap,
@@ -94,11 +89,11 @@ impl LinkMap {
 #[repr(C)]
 #[derive(Copy, Debug)]
 pub struct Debug {
-    pub r_version: ::std::os::raw::c_int,
+    pub r_version: libc::c_int,
     pub r_map: *mut LinkMap,
-    pub r_brk: u64,
+    pub r_brk: usize,
     pub r_state: State,
-    pub r_ldbase: u64,
+    pub r_ldbase: usize,
 }
 impl Clone for Debug {
     fn clone(&self) -> Self { *self }
@@ -110,9 +105,9 @@ impl Default for Debug {
 impl Debug {
 
     /// WARNING: We must initialize after relocation, otherwise the `r_brk` function address will be invalid
-    pub unsafe fn relocated_init (&mut self, base: u64) {
+    pub unsafe fn relocated_init (&mut self, base: usize) {
         self.r_ldbase = base;
-        self.r_brk = &r_debug_state as *const _ as u64;
+        self.r_brk = &r_debug_state as *const _ as usize;
         self.r_state = State::RT_CONSISTENT;
         // i think gdb likes it when there is a first "null" value here... So it can skip it. But it's hard to say, not done debugging the debugger yet. As David says, this is my life: http://m.xkcd.com/1671/
         self.r_map = Box::into_raw(Box::new(LinkMap::default()));
@@ -135,8 +130,8 @@ unsafe impl Sync for Debug {}
 
 pub unsafe fn insert_r_debug<'a, 'b> (dynamic: &[dyn::Dyn]) {
     for dyn in dynamic {
-        if dyn.d_tag == dyn::DT_DEBUG {
-            *((dyn as *const _ as *mut u64).offset(1)) = &_r_debug as *const Debug as u64;
+        if dyn.d_tag as u64 == dyn::DT_DEBUG {
+            *((dyn as *const _ as *mut usize).offset(1)) = &_r_debug as *const Debug as usize;
             break;
         }
     }

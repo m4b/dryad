@@ -21,6 +21,7 @@ default = ["color"]
 color = ["colorify"]
 
 [dependencies.goblin]
-version = "0.0.6"
+version = "0.0.7"
+git = "https://github.com/m4b/goblin"
 default-features = false
 features = ["std", "elf64", "elf32", "endian_fd"]

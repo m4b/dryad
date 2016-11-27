@@ -1,9 +1,3 @@
-#[cfg(target_arch = "x86_64")]
-pub use goblin::elf64 as elf;
-
-#[cfg(target_arch = "x86")]
-pub use goblin::elf32 as elf;
-
 use libc;
 use std::cmp;
 use std::ptr;
@@ -53,8 +47,8 @@ pub struct __libc {
 extern {
     pub static mut __libc: __libc;
     /// TLS init function which needs a pointer to aux vector indexed by AT_<TYPE> that musl likes
-    pub fn __init_tls(aux: *const u64);
-    static builtin_tls: *const u64;
+    pub fn __init_tls(aux: *const usize);
+    static builtin_tls: *const usize;
 }
 
 // example of tls init structure for libc
@@ -289,6 +283,7 @@ fn determine_offset(static_align: &mut usize, static_used: &mut usize, static_si
 /// sets up the `fs` thread pointer on x86_64
 #[inline(always)]
 pub unsafe fn tls_init_tp (tcbp: *mut libc::c_void) {
+    #[cfg(target_arch = "x86_64")]
     let res = syscall!(ARCH_PRCTL, 0x1002, tcbp as usize);
 }
 

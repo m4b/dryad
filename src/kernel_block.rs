@@ -13,7 +13,7 @@ pub struct KernelBlock<'a>{
 }
 
 impl<'b> KernelBlock<'b> {
-    pub fn getauxval(&self, t:u64) -> Option<u64> {
+    pub fn getauxval(&self, t:usize) -> Option<usize> {
         unsafe {
             let ptr = self.auxv.clone();
             let mut i = 1;
@@ -42,7 +42,7 @@ impl<'b> KernelBlock<'b> {
     }
 
     // TODO: add auxc and make auxv a slice of auxv_t
-    pub fn new<'a> (args: *const u64) -> KernelBlock<'a> {
+    pub fn new<'a> (args: *const usize) -> KernelBlock<'a> {
         unsafe {
             let argc = (*args) as isize;
             let argv = args.offset(1) as *const *const u8;

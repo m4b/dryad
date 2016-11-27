@@ -15,12 +15,6 @@ use std::path::Path;
 
 extern crate crossbeam;
 
-#[cfg(target_arch = "x86_64")]
-pub use goblin::elf64 as elf;
-
-#[cfg(target_arch = "x86")]
-pub use goblin::elf32 as elf;
-
 use elf::header::Header;
 use elf::program_header::{self, ProgramHeader};
 use elf::dyn;
@@ -118,14 +112,14 @@ pub extern fn _dryad_fini() {
 }
 */
 
-unsafe fn get_linker_relocations(bias: u64, dynamic: &[dyn::Dyn]) -> &[rela::Rela] {
+unsafe fn get_linker_relocations(bias: usize, dynamic: &[dyn::Dyn]) -> &[rela::Rela] {
     let mut rela = 0;
     let mut relasz = 0;
     let mut relaent = 0;
     let mut relacount = 0;
     for dyn in dynamic {
-        match dyn.d_tag {
-            dyn::DT_RELA => {rela = dyn.d_val + bias;},
+        match dyn.d_tag as u64 {
+            dyn::DT_RELA => {rela = dyn.d_val as usize + bias;},
             dyn::DT_RELASZ => {relasz = dyn.d_val;},
             dyn::DT_RELAENT => {relaent = dyn.d_val;},
             dyn::DT_RELACOUNT => {relacount = dyn.d_val;},
@@ -141,22 +135,27 @@ unsafe fn get_linker_relocations(bias: u64, dynamic: &[dyn::Dyn]) -> &[rela::Rel
 /// DTPMOD64 is showing up in relocs if we make dryad -shared instead of -pie.  and this is because it leaves local executable TLS model because the damn hash map uses random TLS data.  `working_set` has been the bane of my life in this project
 /// private linker relocation function; assumes dryad _only_
 /// contains X86_64_RELATIVE relocations, which should be true
-fn relocate_linker(bias: u64, relas: &[rela::Rela]) {
-    for rela in relas {
-        if rela::r_type(rela.r_info) == rela::R_X86_64_DTPMOD64 {
-            let reloc = (rela.r_offset + bias) as *mut u64;
-            unsafe {
-                *reloc = 0; // lol seriously ?
+fn relocate_linker(bias: usize, relas: &[rela::Rela]) {
+    const LINKER_DTPMOD: u64 = rela::R_X86_64_DTPMOD64;
+    const LINKER_RELATIVE: u64 = rela::R_X86_64_RELATIVE;
+    #[cfg(target_pointer_width = "64")]
+    {
+        for rela in relas {
+            if rela::r_type(rela.r_info) as u64 == LINKER_DTPMOD {
+                let reloc = (rela.r_offset as usize + bias) as *mut usize;
+                unsafe {
+                    *reloc = 0; // just because
+                }
             }
-        }
-        if rela::r_type(rela.r_info) == rela::R_X86_64_RELATIVE {
-            // get the actual symbols address given by adding the on-disk binary offset `r_offset` to the symbol with the actual address the linker was loaded at
-            let reloc = (rela.r_offset + bias) as *mut u64;
-            // now set the content of this address to whatever is at the load bias + the addend
-            // typically, this is all static, constant read only global data, like strings, constant ints, etc.
-            unsafe {
-                // TODO: verify casting bias to an i64 is correct
-                *reloc = (rela.r_addend + bias as i64) as u64;
+            if rela::r_type(rela.r_info) as u64 == LINKER_RELATIVE {
+                // get the actual symbols address given by adding the on-disk binary offset `r_offset` to the symbol with the actual address the linker was loaded at
+                let reloc = (rela.r_offset as usize + bias) as *mut usize;
+                // now set the content of this address to whatever is at the load bias + the addend
+                // typically, this is all static, constant read only global data, like strings, constant ints, etc.
+                unsafe {
+                    // TODO: verify casting bias to an isize is correct
+                    *reloc = (rela.r_addend + bias as i64) as usize;
+                }
             }
         }
     }
@@ -166,12 +165,12 @@ fn relocate_linker(bias: u64, relas: &[rela::Rela]) {
 /// TODO: Change permissions on most of these fields
 pub struct Linker<'process> {
     // TODO: maybe remove base
-    pub base: u64,
-    pub load_bias: u64,
+    pub base: usize,
+    pub load_bias: usize,
     pub ehdr: &'process Header,
     pub phdrs: &'process [program_header::ProgramHeader],
     pub dynamic: &'process [dyn::Dyn],
-    auxv: Vec<u64>,
+    auxv: Vec<usize>,
     config: Config<'process>,
     working_set: Box<HashMap<String, SharedObject<'process>>>, // TODO: we can eventually drop this or have it stack local var instead of field
     link_map_order: Vec<String>,
@@ -194,20 +193,20 @@ impl<'process> fmt::Debug for Linker<'process> {
 }
 
 impl<'process> Linker<'process> {
-    pub fn new<'kernel> (base: u64, block: &'kernel kernel_block::KernelBlock) -> Result<Linker<'kernel>, &'static str> {
+    pub fn new<'kernel> (base: usize, block: &'kernel kernel_block::KernelBlock) -> Result<Linker<'kernel>, &'static str> {
         unsafe {
 
             let ehdr = &*(base as *const Header);
-            let addr = (base + ehdr.e_phoff) as *const program_header::ProgramHeader;
+            let addr = (base + ehdr.e_phoff as usize) as *const program_header::ProgramHeader;
             let phdrs = ProgramHeader::from_raw_parts(addr, ehdr.e_phnum as usize);
-            let load_bias = image::compute_load_bias_wrapping(base, &phdrs) as u64;
+            let load_bias = image::compute_load_bias_wrapping(base, &phdrs);
             if let Some(dynamic) = dyn::from_phdrs(load_bias, &phdrs) {
 
                 let relocations = get_linker_relocations(load_bias, &dynamic);
                 relocate_linker(load_bias, &relocations);
                 // dryad has successfully relocated itself; time to init tls
                 let mut auxv = auxv::from_raw(block.auxv);
-                auxv[auxv::AT_PHDR as usize] = addr as u64;
+                auxv[auxv::AT_PHDR] = addr as usize;
                 // again, one day we'll init lachesis and tls for the duration of dryad relocation+linking, using our custom hand-rolled TLS impl
                 // tls::Lachesis::init_from_phdrs(load_bias as usize, phdrs);
                 tls::__init_tls(auxv.as_ptr()); // this _should_ be safe since vec only allocates and shouldn't access tls. maybe.
@@ -313,7 +312,7 @@ impl<'process> Linker<'process> {
     /// directly to `name1`, without calling the dynamic linker a second time. That
     /// is, the jmp instruction at `.PLT1` will transfer to `name1`, instead of "falling
     /// through" to the pushq instruction.
-    fn prepare_got<'a> (&self, idx: usize, pltgot: *const u64, name: &'a str) {
+    fn prepare_got<'a> (&self, idx: usize, pltgot: *const usize, name: &'a str) {
 
         if pltgot.is_null() {
             dbg!(self.config.debug, "empty pltgot for {}", name);
@@ -363,39 +362,43 @@ impl<'process> Linker<'process> {
             let sym = rela::r_sym(rela.r_info); // index into the sym table
             let symbol = &symtab[sym as usize];
             let name = &strtab[symbol.st_name as usize];
-            let reloc = (rela.r_offset + bias) as *mut u64;
+            let reloc = (rela.r_offset as usize + bias) as *mut usize;
             match typ {
+                #[cfg(target_pointer_width = "64")]
                 // B + A
                 rela::R_X86_64_RELATIVE => {
                     // set the relocations address to the load bias + the addend
-                    unsafe { *reloc = (rela.r_addend + bias as i64) as u64; }
+                    unsafe { *reloc = (rela.r_addend + bias as i64) as usize; }
                     count += 1;
                 },
+                #[cfg(target_pointer_width = "64")]
                 // (S + A) - offset
                 rela::R_X86_64_TPOFF64 => {
                     if let Some((symbol, providing_so)) = self.find_symbol(name) {
                         let tls = providing_so.tls.expect(&format!("Error: symbol \"{}\" required in {}, but the providing so {} does not have a TLS program header", name, so.name(), providing_so.name()));
                         // TODO: it should be the symbol value (= tls offset in that module) plus the addend + the tls offset into the dtv of that module; i don't think load bias is used at all here, as it will be a relative got load?
-                        unsafe { *reloc = (symbol.st_value as i64 + rela.r_addend as i64 - tls.offset as i64) as u64; }
+                        unsafe { *reloc = (symbol.st_value as i64 + rela.r_addend as i64 - tls.offset as i64) as usize; }
                         dbgc!(purple_bold: self.config.debug, "tls", "bound {} \"{}\" required in {} to provider {} with address 0x{:x}", sym::get_type(symbol.st_info), name, so.name(), providing_so.name(), unsafe { *reloc });
                         count += 1;
                     }
                 },
+                #[cfg(target_pointer_width = "64")]
                 // S
                 rela::R_X86_64_GLOB_DAT => {
                     // resolve symbol;
                     // 1. start with exe, then next in needed, then next until symbol found
                     // 2. use gnu_hash with symbol name to get sym info
                     if let Some((symbol, so)) = self.find_symbol(name) {
-                        unsafe { *reloc = symbol.st_value + so.load_bias; }
+                        unsafe { *reloc = symbol.st_value as usize + so.load_bias; }
                         count += 1;
                     }
                 },
+                #[cfg(target_pointer_width = "64")]
                 // S + A
                 rela::R_X86_64_64 => {
                     // TODO: this is inaccurate because find_symbol is inaccurate
                     if let Some((symbol, so)) = self.find_symbol(name) {
-                        unsafe { *reloc = (rela.r_addend + symbol.st_value as i64 + so.load_bias as i64) as u64; }
+                        unsafe { *reloc = (rela.r_addend + symbol.st_value as i64 + so.load_bias as i64) as usize; }
                         count += 1;
                     }
                 },
@@ -426,24 +429,26 @@ impl<'process> Linker<'process> {
             let sym = rela::r_sym(rela.r_info); // index into the sym table
             let symbol = &symtab[sym as usize];
             let name = &strtab[symbol.st_name as usize];
-            let reloc = (rela.r_offset + bias) as *mut u64;
+            let reloc = (rela.r_offset as usize + bias) as *mut usize;
             match typ {
+                #[cfg(target_pointer_width = "64")]
                 rela::R_X86_64_JUMP_SLOT if self.config.bind_now => {
                     if let Some((symbol, so)) = self.find_symbol(name) {
 //                        if self.config.debug { println!("resolving {} to {:#x}", name, symbol_address); }
-                        unsafe { *reloc = symbol.st_value + so.load_bias; }
+                        unsafe { *reloc = symbol.st_value as usize + so.load_bias; }
                         count += 1;
                     } else {
                         dbgc!(orange_bold: self.config.debug, "dryad.warning", "no resolution for {}", name);
                     }
                 },
+                #[cfg(target_pointer_width = "64")]
                 // fun @ (B + A)()
                 rela::R_X86_64_IRELATIVE => {
                     let addr = rela.r_addend + bias as i64;
 //                    dbg!(self.config.debug, "irelative: bias: {:#x} addend: {:#x} addr: {:#x}", bias, rela.r_addend, addr);
                     unsafe {
                         let ifunc = mem::transmute::<usize, (fn() -> usize)>(addr as usize);
-                        *reloc = ifunc() as u64;
+                        *reloc = ifunc() as usize;
 //                        dbg!(self.config.debug, "ifunc addr: 0x{:x}", *reloc);
                     }
                     count += 1;
@@ -536,7 +541,7 @@ impl<'process> Linker<'process> {
         let name = utils::str_at(block.argv[0], 0);
         let phdr_addr = block.getauxval(auxv::AT_PHDR).unwrap();
         let phnum  = block.getauxval(auxv::AT_PHNUM).unwrap();
-        let image = try!(SharedObject::from_executable(name, phdr_addr, phnum as usize, &mut self.lachesis));
+        let image = try!(SharedObject::from_executable(name, phdr_addr, phnum, &mut self.lachesis));
 
         dbg!(self.config.debug, "Main Image:\n  {:#?}", &image);
 

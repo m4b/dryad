@@ -47,14 +47,14 @@ extern {
 }
 
 #[no_mangle]
-pub extern fn dryad_init (raw_args: *const u64) -> u64 {
+pub extern fn dryad_init (raw_args: *const usize) -> usize {
 
     // the linker is currently tied to the lifetime of the kernel block... but really it's static
     let block = KernelBlock::new(raw_args);
     let linker_base = block.getauxval(auxv::AT_BASE).unwrap();
     let entry  = block.getauxval(auxv::AT_ENTRY).unwrap();
 
-    let start_addr = _start as *const u64 as u64;    
+    let start_addr = _start as *const usize as usize;
     if start_addr == entry {
         utils::set_panic();
         // because it's _tradition_
