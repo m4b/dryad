@@ -314,12 +314,21 @@ impl<'process> Linker<'process> {
             let name = &strtab[symbol.st_name as usize];
             let reloc = (rela.r_offset as usize + bias) as *mut usize;
             match typ {
-                #[cfg(target_pointer_width = "64")]
                 // B + A
-                rela::R_X86_64_RELATIVE => {
+                relocation::RELATIVE => {
                     // set the relocations address to the load bias + the addend
-                    unsafe { *reloc = (rela.r_addend + bias as i64) as usize; }
+                    unsafe { *reloc = (rela.r_addend as isize + bias as isize) as usize; }
                     count += 1;
+                },
+                // S
+                relocation::GLOB_DAT => {
+                    // resolve symbol;
+                    // 1. start with exe, then next in needed, then next until symbol found
+                    // 2. use gnu_hash with symbol name to get sym info
+                    if let Some((symbol, so)) = self.find_symbol(name) {
+                        unsafe { *reloc = symbol.st_value as usize + so.load_bias; }
+                        count += 1;
+                    }
                 },
                 #[cfg(target_pointer_width = "64")]
                 // (S + A) - offset
@@ -329,17 +338,6 @@ impl<'process> Linker<'process> {
                         // TODO: it should be the symbol value (= tls offset in that module) plus the addend + the tls offset into the dtv of that module; i don't think load bias is used at all here, as it will be a relative got load?
                         unsafe { *reloc = (symbol.st_value as i64 + rela.r_addend as i64 - tls.offset as i64) as usize; }
                         dbgc!(purple_bold: self.config.debug, "tls", "bound {} \"{}\" required in {} to provider {} with address 0x{:x}", sym::get_type(symbol.st_info), name, so.name(), providing_so.name(), unsafe { *reloc });
-                        count += 1;
-                    }
-                },
-                #[cfg(target_pointer_width = "64")]
-                // S
-                rela::R_X86_64_GLOB_DAT => {
-                    // resolve symbol;
-                    // 1. start with exe, then next in needed, then next until symbol found
-                    // 2. use gnu_hash with symbol name to get sym info
-                    if let Some((symbol, so)) = self.find_symbol(name) {
-                        unsafe { *reloc = symbol.st_value as usize + so.load_bias; }
                         count += 1;
                     }
                 },
@@ -381,8 +379,7 @@ impl<'process> Linker<'process> {
             let name = &strtab[symbol.st_name as usize];
             let reloc = (rela.r_offset as usize + bias) as *mut usize;
             match typ {
-                #[cfg(target_pointer_width = "64")]
-                rela::R_X86_64_JUMP_SLOT if self.config.bind_now => {
+                relocation::JUMP_SLOT if self.config.bind_now => {
                     if let Some((symbol, so)) = self.find_symbol(name) {
 //                        if self.config.debug { println!("resolving {} to {:#x}", name, symbol_address); }
                         unsafe { *reloc = symbol.st_value as usize + so.load_bias; }
@@ -391,10 +388,9 @@ impl<'process> Linker<'process> {
                         dbgc!(orange_bold: self.config.debug, "dryad.warning", "no resolution for {}", name);
                     }
                 },
-                #[cfg(target_pointer_width = "64")]
                 // fun @ (B + A)()
-                rela::R_X86_64_IRELATIVE => {
-                    let addr = rela.r_addend + bias as i64;
+                relocation::IRELATIVE => {
+                    let addr = rela.r_addend as isize + bias as isize;
 //                    dbg!(self.config.debug, "irelative: bias: {:#x} addend: {:#x} addr: {:#x}", bias, rela.r_addend, addr);
                     unsafe {
                         let ifunc = mem::transmute::<usize, (fn() -> usize)>(addr as usize);

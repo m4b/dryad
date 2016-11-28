@@ -13,7 +13,6 @@ gcc = "0.3"
 [dependencies]
 libc = "0.2"
 crossbeam = "0.2.9"
-syscall = "0.2.1"
 colorify = { version = "0.2.2", optional = true }
 
 [features]
@@ -25,3 +24,6 @@ version = "0.0.7"
 git = "https://github.com/m4b/goblin"
 default-features = false
 features = ["std", "elf64", "elf32", "endian_fd"]
+
+[target.x86_64-unknown-linux-musl.dependencies]
+syscall = "0.2.1"

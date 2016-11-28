@@ -163,7 +163,9 @@ impl<'process> SharedObject<'process> {
                 let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
                 let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz, 0x0);
                 let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
+                // FIXME: this is broken, on 32-bit can also have rel
                 let relatab = rela::from_raw(link_info.rela as *const rela::Rela, link_info.relasz);
+                // FIXME: this is broken, can be either rel or rela, depending on info.pltrel value
                 let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);
 
                 // TODO: fail with Err, not panic
