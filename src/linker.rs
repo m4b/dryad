@@ -7,7 +7,6 @@
 // 2. determine reason for libc crashes again :/
 use std::collections::HashMap;
 use std::boxed::Box;
-use std::slice;
 use std::fmt;
 use std::mem;
 use std::fs::File;
@@ -30,6 +29,7 @@ use kernel_block;
 use auxv;
 use runtime;
 use tls;
+use relocation;
 
 //thread_local!(static FOO: u32 = 0xdeadbeef);
 
@@ -112,55 +112,6 @@ pub extern fn _dryad_fini() {
 }
 */
 
-unsafe fn get_linker_relocations(bias: usize, dynamic: &[dyn::Dyn]) -> &[rela::Rela] {
-    let mut rela = 0;
-    let mut relasz = 0;
-    let mut relaent = 0;
-    let mut relacount = 0;
-    for dyn in dynamic {
-        match dyn.d_tag as u64 {
-            dyn::DT_RELA => {rela = dyn.d_val as usize + bias;},
-            dyn::DT_RELASZ => {relasz = dyn.d_val;},
-            dyn::DT_RELAENT => {relaent = dyn.d_val;},
-            dyn::DT_RELACOUNT => {relacount = dyn.d_val;},
-            _ => ()
-        }
-    }
-    // TODO: validate relaent, using relacount
-    let count = (relasz / relaent) as usize;
-    slice::from_raw_parts(rela as *const rela::Rela, count)
-}
-
-/// TODO: i think this is false; we may need to relocate R_X86_64_GLOB_DAT and R_X86_64_64
-/// DTPMOD64 is showing up in relocs if we make dryad -shared instead of -pie.  and this is because it leaves local executable TLS model because the damn hash map uses random TLS data.  `working_set` has been the bane of my life in this project
-/// private linker relocation function; assumes dryad _only_
-/// contains X86_64_RELATIVE relocations, which should be true
-fn relocate_linker(bias: usize, relas: &[rela::Rela]) {
-    const LINKER_DTPMOD: u64 = rela::R_X86_64_DTPMOD64;
-    const LINKER_RELATIVE: u64 = rela::R_X86_64_RELATIVE;
-    #[cfg(target_pointer_width = "64")]
-    {
-        for rela in relas {
-            if rela::r_type(rela.r_info) as u64 == LINKER_DTPMOD {
-                let reloc = (rela.r_offset as usize + bias) as *mut usize;
-                unsafe {
-                    *reloc = 0; // just because
-                }
-            }
-            if rela::r_type(rela.r_info) as u64 == LINKER_RELATIVE {
-                // get the actual symbols address given by adding the on-disk binary offset `r_offset` to the symbol with the actual address the linker was loaded at
-                let reloc = (rela.r_offset as usize + bias) as *mut usize;
-                // now set the content of this address to whatever is at the load bias + the addend
-                // typically, this is all static, constant read only global data, like strings, constant ints, etc.
-                unsafe {
-                    // TODO: verify casting bias to an isize is correct
-                    *reloc = (rela.r_addend + bias as i64) as usize;
-                }
-            }
-        }
-    }
-}
-
 /// The dynamic linker
 /// TODO: Change permissions on most of these fields
 pub struct Linker<'process> {
@@ -201,9 +152,8 @@ impl<'process> Linker<'process> {
             let phdrs = ProgramHeader::from_raw_parts(addr, ehdr.e_phnum as usize);
             let load_bias = image::compute_load_bias_wrapping(base, &phdrs);
             if let Some(dynamic) = dyn::from_phdrs(load_bias, &phdrs) {
-
-                let relocations = get_linker_relocations(load_bias, &dynamic);
-                relocate_linker(load_bias, &relocations);
+                let info = dyn::DynamicInfo::new(&dynamic, load_bias);
+                relocation::relocate_linker(load_bias, &info, &phdrs);
                 // dryad has successfully relocated itself; time to init tls
                 let mut auxv = auxv::from_raw(block.auxv);
                 auxv[auxv::AT_PHDR] = addr as usize;

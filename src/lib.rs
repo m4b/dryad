@@ -10,6 +10,7 @@
 #[cfg(not(feature = "no_color"))]
 #[macro_use] extern crate colorify;
 
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 #[macro_use] extern crate syscall;
 
 extern crate goblin;
@@ -27,6 +28,7 @@ mod image;
 
 mod loader;
 mod tls;
+mod relocation;
 pub mod runtime;
 pub mod linker;
 pub mod gdb;

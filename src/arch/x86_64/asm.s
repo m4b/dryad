@@ -5,8 +5,6 @@ _dryad_fini:
 	leaq (%rip), %rax
         retq
 
-	// TODO: fix in lib.rs: _start needs to get a stack and argc that looks like it was executed directly, i believe this might be the final cause of the segfault in dynamic linking, because certain arguments in the stack are too high?
-
 	// this causes segfaults very early on, can't use Mutabah's fix for now...
 .section .data
 _addr_of_dryad_init: .quad dryad_init

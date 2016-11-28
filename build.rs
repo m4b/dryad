@@ -1,8 +1,32 @@
 extern crate gcc;
 
+use std::env;
+
 fn main () {
+
+    let target = env::var("TARGET").unwrap();
+    println!("target: {}", target);
+
+    let (target, arch) = match target.as_str() {
+        "x86_64-unknown-linux-musl" => {
+            ("x86_64-unknown-linux-gnu", "x86_64")
+        },
+        "i686-unknown-linux-musl" => {
+            ("i686-unknown-linux-gnu", "x86")
+        },
+        target => {
+            if target.contains("aarch64") {
+                (target, "arm64")
+            } else if target.contains("arm"){
+                (target, "arm")
+            } else {
+                panic!(format!("Unsupported target architecture: {}", target))
+            }
+        },
+    };
+
     gcc::Config::new()
-        .file("src/arch/x86/asm.s")
-        .target("x86_64-unknown-linux-gnu") // need to set this otherwise complains that we don't have musl-gcc, but we don't care how the asm really gets compiled, just that we have it
+        .file(format!("src/arch/{}/asm.s", arch))
+        .target(target)
         .compile("libstart.a");
 }

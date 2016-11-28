@@ -237,8 +237,10 @@ pub mod page {
 
 pub mod mmap {
     use libc;
+    use utils::page;
     use std::fs::File;
     use std::os::unix::io::AsRawFd;
+    use elf::program_header;
 
     // from /usr/include/bits/mman.h and mman-linux.h
     // I'm even warned not to "include" this, so I will anyway: # error "Never use <bits/mman-linux.h> directly; include <sys/mman.h> instead."
@@ -265,11 +267,40 @@ pub mod mmap {
     // from musl libc
     extern {
         fn mmap64(addr: *const usize, len: usize, prot: isize, flags: libc::c_int, fildes: libc::c_int, off: usize) -> usize;
+        fn mprotect(addr: *const libc::c_void, len: libc::size_t, prot: libc::c_int) -> libc::c_int;
     }
 
     #[inline(always)]
     pub unsafe fn mmap(addr: *const usize, len: usize, prot: isize, flags: libc::c_int, fildes: libc::c_int, off: usize) -> usize {
         mmap64(addr, len, prot, flags, fildes, off)
+    }
+
+    #[inline(always)]
+    pub fn pflags_to_prot (x: u32) -> isize {
+        use elf::program_header::{PF_X, PF_R, PF_W};
+
+        // I'm a dick for writing this/copying maniac C programmer implementations: but it checks the flag to see if it's the PF value,
+        // and returns the appropriate mmap version, and logical ORs this for use in the mmap prot argument
+        (if x & PF_X == PF_X { PROT_EXEC } else { 0 }) |
+        (if x & PF_R == PF_R { PROT_READ } else { 0 }) |
+        (if x & PF_W == PF_W { PROT_WRITE } else { 0 })
+    }
+
+    pub fn mprotect_phdrs (phdrs: &[program_header::ProgramHeader], bias: usize, flags: isize) -> bool {
+        for phdr in phdrs {
+            if phdr.p_type == program_header::PT_LOAD {
+                let seg_page_start = page::page_start(phdr.p_vaddr as usize) + bias;
+                let seg_page_end = page::page_end((phdr.p_vaddr + phdr.p_memsz) as usize) + bias;
+                let mut prot = pflags_to_prot(phdr.p_flags);
+                if (flags as isize & PROT_WRITE) != 0 {
+                    // bionic says: make sure we're never simultaneously writable / executable
+                    prot &= !PROT_EXEC;
+                }
+                let ret = unsafe { mprotect(seg_page_start as *const libc::c_void, (seg_page_end - seg_page_start) as libc::size_t, (prot | flags) as libc::c_int) };
+                if ret < 0 { return false }
+            }
+        }
+        true
     }
 
     #[inline(always)]

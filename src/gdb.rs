@@ -34,7 +34,7 @@ impl Default for LinkMap {
 impl fmt::Debug for LinkMap {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}: {:x} {:?}",
-               unsafe { CString::from_raw(self.l_name as *mut i8)},
+               unsafe { CString::from_raw(self.l_name as *mut libc::c_char)},
                self.l_addr,
                self.l_ld,
                )

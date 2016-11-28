@@ -69,17 +69,6 @@ fn reserve_address_space (phdrs: &[program_header::ProgramHeader]) -> Result <(u
     }
 }
 
-#[inline(always)]
-fn pflags_to_prot (x: u32) -> isize {
-    use elf::program_header::{PF_X, PF_R, PF_W};
-
-    // I'm a dick for writing this/copying maniac C programmer implementations: but it checks the flag to see if it's the PF value,
-    // and returns the appropriate mmap version, and logical ORs this for use in the mmap prot argument
-    (if x & PF_X == PF_X { mmap::PROT_EXEC } else { 0 }) |
-    (if x & PF_R == PF_R { mmap::PROT_READ } else { 0 }) |
-    (if x & PF_W == PF_W { mmap::PROT_WRITE } else { 0 })
-}
-
 /// Loads an ELF binary from the given fd, mmaps its contents, and returns a SharedObject, whose lifetime is tied to the mmap's, i.e., manually managed
 pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, lachesis: &mut tls::Lachesis) -> Result <SharedObject<'a>, String> {
 
@@ -151,7 +140,7 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
 
                 if file_length != 0 {
                     let mmap_flags = mmap::MAP_FIXED | mmap::MAP_PRIVATE;
-                    let prot_flags = pflags_to_prot(phdr.p_flags);
+                    let prot_flags = mmap::pflags_to_prot(phdr.p_flags);
                     unsafe {
                         let start = mmap::mmap(seg_page_start as *const usize,
                                                file_length as usize,
