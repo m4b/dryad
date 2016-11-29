@@ -10,7 +10,7 @@ use elf::program_header::{self, ProgramHeader};
 use elf::dyn::{self, Dyn};
 use elf::sym::{self, Sym};
 use elf::strtab::Strtab;
-use elf::rela::{self, Rela};
+use elf::reloc;
 use elf::gnu_hash::GnuHash;
 use tls;
 
@@ -60,8 +60,17 @@ pub struct SharedObject<'process> {
     pub dynamic: &'process [Dyn],
     pub strtab: Strtab<'process>,
     pub symtab: &'process[Sym],
-    pub relatab: &'process[Rela],
-    pub pltrelatab: &'process[Rela],
+    // yes this is hacks, and yes i hate compile time switches, but
+    // number of relocs can be in 10k+ and not realistic to allocate a buffer
+    // of Reloc structs
+    #[cfg(target_pointer_width = "32")]
+    pub relocations: &'process[reloc::Rel],
+    #[cfg(target_pointer_width = "64")]
+    pub relocations: &'process[reloc::Rela],
+    #[cfg(target_pointer_width = "32")]
+    pub pltrelocations: &'process[reloc::Rel],
+    #[cfg(target_pointer_width = "64")]
+    pub pltrelocations: &'process[reloc::Rela],
     pub pltgot: *const usize,
     pub gnu_hash: Option<GnuHash<'process>>,
     pub load_path: Option<String>,
@@ -73,8 +82,8 @@ pub struct SharedObject<'process> {
 
 impl<'process> fmt::Debug for SharedObject<'process> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "name: {} load_bias: {:x} DT_FLAGS: 0x{:x} DT_FLAGS_1 0x{:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Rela Table: {:#?}\n  Plt Rela Table: {:#?}\n  Libraries: {:#?}\n",
-               self.name(), self.load_bias, self.flags, self.state_flags, self.phdrs, self.dynamic, self.strtab, self.symtab, self.relatab, self.pltrelatab, self.libs)
+        write!(f, "name: {} load_bias: {:x} DT_FLAGS: 0x{:x} DT_FLAGS_1 0x{:x}\n  ProgramHeaders: {:#?}\n  _DYNAMIC: {:#?}\n  String Table: {:#?}\n  Symbol Table: {:#?}\n  Reloc Table: {:#?}\n  Plt Reloc Table: {:#?}\n  Libraries: {:#?}\n",
+               self.name(), self.load_bias, self.flags, self.state_flags, self.phdrs, self.dynamic, self.strtab, self.symtab, self.relocations, self.pltrelocations, self.libs)
     }
 }
 
@@ -103,8 +112,14 @@ impl<'process> SharedObject<'process> {
         let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
         let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz as usize, 0x0);
         let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
-        let relatab = rela::from_raw(link_info.rela as *const rela::Rela, link_info.relasz);
-        let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);
+        #[cfg(target_pointer_width = "32")]
+        let relocations = reloc::from_raw_rel(link_info.rel as *const reloc::Rel, link_info.relsz);
+        #[cfg(target_pointer_width = "32")]
+        let pltrelocations = reloc::from_raw_rel(link_info.jmprel as *const reloc::Rel, link_info.pltrelsz);
+        #[cfg(target_pointer_width = "64")]
+        let relocations = reloc::from_raw_rela(link_info.rela as *const reloc::Rela, link_info.relasz);
+        #[cfg(target_pointer_width = "64")]
+        let pltrelocations = reloc::from_raw_rela(link_info.jmprel as *const reloc::Rela, link_info.pltrelsz);
         let pltgot = if let Some(addr) = link_info.pltgot { addr } else { 0 };
         SharedObject {
             load_bias: ptr,
@@ -115,8 +130,8 @@ impl<'process> SharedObject<'process> {
             dynamic: dynamic,
             symtab: symtab,
             strtab: strtab,
-            relatab: relatab,
-            pltrelatab: pltrelatab,
+            relocations: relocations,
+            pltrelocations: pltrelocations,
             pltgot: pltgot as *const usize,
             gnu_hash: gnu_hash!(link_info, symtab),
             load_path: None,
@@ -163,11 +178,14 @@ impl<'process> SharedObject<'process> {
                 let symtab = sym::from_raw(link_info.symtab as *const sym::Sym, num_syms);
                 let strtab = Strtab::from_raw(link_info.strtab as *const u8, link_info.strsz, 0x0);
                 let libs = dyn::get_needed(dynamic, &strtab, link_info.needed_count);
-                // FIXME: this is broken, on 32-bit can also have rel
-                let relatab = rela::from_raw(link_info.rela as *const rela::Rela, link_info.relasz);
-                // FIXME: this is broken, can be either rel or rela, depending on info.pltrel value
-                let pltrelatab = rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz);
-
+                #[cfg(target_pointer_width = "32")]
+                let relocations = reloc::from_raw_rel(link_info.rel as *const reloc::Rel, link_info.relsz);
+                #[cfg(target_pointer_width = "32")]
+                let pltrelocations = reloc::from_raw_rel(link_info.jmprel as *const reloc::Rel, link_info.pltrelsz);
+                #[cfg(target_pointer_width = "64")]
+                let relocations = reloc::from_raw_rela(link_info.rela as *const reloc::Rela, link_info.relasz);
+                #[cfg(target_pointer_width = "64")]
+                let pltrelocations = reloc::from_raw_rela(link_info.jmprel as *const reloc::Rela, link_info.pltrelsz);
                 // TODO: fail with Err, not panic
                 let pltgot = link_info.pltgot.expect("Error executable has no pltgot, aborting") as *const usize;
                 Ok (SharedObject {
@@ -179,8 +197,8 @@ impl<'process> SharedObject<'process> {
                     dynamic: dynamic,
                     symtab: symtab,
                     strtab: strtab,
-                    relatab: relatab,
-                    pltrelatab: pltrelatab,
+                    relocations: relocations,
+                    pltrelocations: pltrelocations,
                     pltgot: pltgot,
                     gnu_hash: gnu_hash!(link_info, symtab),
                     load_path: Some (name.to_string()), // TODO: make absolute?,

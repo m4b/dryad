@@ -1,6 +1,6 @@
-#![allow(unused_assignments)] // remove this after validating rela for get_linker_relocations
+#![allow(unused_assignments)] // remove this after validating reloc for get_linker_relocations
 // Questions from README:
-// 1. Is the `rela` _always_ in a `PT_LOAD` segment?
+// 1. Is the `reloc` _always_ in a `PT_LOAD` segment?
 // 2. Is the `strtab` _always_ after the `symtab` in terms of binary offset, and hence we can compute the size of the symtab by subtracting the two?
 // TODO:
 // 1. fix TLS
@@ -17,7 +17,7 @@ extern crate crossbeam;
 use elf::header::Header;
 use elf::program_header::{self, ProgramHeader};
 use elf::dyn;
-use elf::rela;
+use elf::reloc;
 use elf::sym;
 use loader;
 use image::{self, SharedObject};
@@ -299,7 +299,7 @@ impl<'process> Linker<'process> {
         None
     }
 
-    // TODO: rela::R_X86_64_GLOB_DAT => this is a symbol resolution and requires full link map data, and _cannot_ be done before everything is relocated
+    // TODO: reloc::R_X86_64_GLOB_DAT => this is a symbol resolution and requires full link map data, and _cannot_ be done before everything is relocated
     // ditto TPOFF64...
     fn relocate_got (&self, idx: usize, so: &SharedObject) {
         let symtab = &so.symtab;
@@ -307,17 +307,27 @@ impl<'process> Linker<'process> {
         let bias = so.load_bias;
         let mut count = 0;
         let tls = so.tls;
-        for rela in so.relatab {
-            let typ = rela::r_type(rela.r_info);
-            let sym = rela::r_sym(rela.r_info); // index into the sym table
+        if so.link_info.textrel {
+            let res = utils::mmap::mprotect_phdrs(&so.phdrs, bias, utils::mmap::PROT_WRITE);
+        }
+        for reloc in so.relocations {
+            let typ = reloc::r_type(reloc.r_info);
+            let sym = reloc::r_sym(reloc.r_info); // index into the sym table
             let symbol = &symtab[sym as usize];
             let name = &strtab[symbol.st_name as usize];
-            let reloc = (rela.r_offset as usize + bias) as *mut usize;
+            let addr = (reloc.r_offset as usize + bias) as *mut usize;
+            //dbg!(self.config.debug, "reloc {:p} -> {:x}", addr, unsafe { *addr });
             match typ {
                 // B + A
                 relocation::RELATIVE => {
+                    #[cfg(target_pointer_width = "64")]
+                    let addend = reloc.r_addend as isize;
+                    #[cfg(target_pointer_width = "32")]
+                    let addend = unsafe { (*addr) } as isize ;
+
                     // set the relocations address to the load bias + the addend
-                    unsafe { *reloc = (rela.r_addend as isize + bias as isize) as usize; }
+                    unsafe { *addr = (addend + bias as isize) as usize; }
+                    //dbg!(self.config.debug, "after reloc {:p} -> {:x}", addr, unsafe { *addr });
                     count += 1;
                 },
                 // S
@@ -326,27 +336,30 @@ impl<'process> Linker<'process> {
                     // 1. start with exe, then next in needed, then next until symbol found
                     // 2. use gnu_hash with symbol name to get sym info
                     if let Some((symbol, so)) = self.find_symbol(name) {
-                        unsafe { *reloc = symbol.st_value as usize + so.load_bias; }
+                        // TODO: add 32-bit relocation
+                        #[cfg(target_pointer_width = "64")]
+                        unsafe { *addr = symbol.st_value as usize + so.load_bias; }
                         count += 1;
                     }
                 },
-                #[cfg(target_pointer_width = "64")]
+                // ========= Platform specific relocations go here =========
+                #[cfg(arch = "x86_64")]
                 // (S + A) - offset
-                rela::R_X86_64_TPOFF64 => {
+                reloc::R_X86_64_TPOFF64 => {
                     if let Some((symbol, providing_so)) = self.find_symbol(name) {
                         let tls = providing_so.tls.expect(&format!("Error: symbol \"{}\" required in {}, but the providing so {} does not have a TLS program header", name, so.name(), providing_so.name()));
                         // TODO: it should be the symbol value (= tls offset in that module) plus the addend + the tls offset into the dtv of that module; i don't think load bias is used at all here, as it will be a relative got load?
-                        unsafe { *reloc = (symbol.st_value as i64 + rela.r_addend as i64 - tls.offset as i64) as usize; }
-                        dbgc!(purple_bold: self.config.debug, "tls", "bound {} \"{}\" required in {} to provider {} with address 0x{:x}", sym::get_type(symbol.st_info), name, so.name(), providing_so.name(), unsafe { *reloc });
+                        unsafe { *addr = (symbol.st_value as i64 + reloc.r_addend as i64 - tls.offset as i64) as usize; }
+                        dbgc!(purple_bold: self.config.debug, "tls", "bound {} \"{}\" required in {} to provider {} with address 0x{:x}", sym::get_type(symbol.st_info), name, so.name(), providing_so.name(), unsafe { *addr });
                         count += 1;
                     }
                 },
-                #[cfg(target_pointer_width = "64")]
+                #[cfg(arch = "x86_64")]
                 // S + A
-                rela::R_X86_64_64 => {
+                reloc::R_X86_64_64 => {
                     // TODO: this is inaccurate because find_symbol is inaccurate
                     if let Some((symbol, so)) = self.find_symbol(name) {
-                        unsafe { *reloc = (rela.r_addend + symbol.st_value as i64 + so.load_bias as i64) as usize; }
+                        unsafe { *addr = (reloc.r_addend + symbol.st_value as i64 + so.load_bias as i64) as usize; }
                         count += 1;
                     }
                 },
@@ -372,17 +385,17 @@ impl<'process> Linker<'process> {
         // > Much as the global offset table redirects position-independent address calculations
         // > to absolute locations, the procedure linkage table redirects position-independent
         // > function calls to absolute locations.
-        for rela in so.pltrelatab {
-            let typ = rela::r_type(rela.r_info);
-            let sym = rela::r_sym(rela.r_info); // index into the sym table
+        for reloc in so.pltrelocations {
+            let typ = reloc::r_type(reloc.r_info);
+            let sym = reloc::r_sym(reloc.r_info); // index into the sym table
             let symbol = &symtab[sym as usize];
             let name = &strtab[symbol.st_name as usize];
-            let reloc = (rela.r_offset as usize + bias) as *mut usize;
+            let addr = (reloc.r_offset as usize + bias) as *mut usize;
+            //dbg!(self.config.debug, "reloc {:p} -> {:x}", addr, unsafe { *addr });
             match typ {
                 relocation::JUMP_SLOT if self.config.bind_now => {
                     if let Some((symbol, so)) = self.find_symbol(name) {
-//                        if self.config.debug { println!("resolving {} to {:#x}", name, symbol_address); }
-                        unsafe { *reloc = symbol.st_value as usize + so.load_bias; }
+                        unsafe { *addr = symbol.st_value as usize + so.load_bias; }
                         count += 1;
                     } else {
                         dbgc!(orange_bold: self.config.debug, "dryad.warning", "no resolution for {}", name);
@@ -390,11 +403,16 @@ impl<'process> Linker<'process> {
                 },
                 // fun @ (B + A)()
                 relocation::IRELATIVE => {
-                    let addr = rela.r_addend as isize + bias as isize;
-//                    dbg!(self.config.debug, "irelative: bias: {:#x} addend: {:#x} addr: {:#x}", bias, rela.r_addend, addr);
+                    #[cfg(target_pointer_width = "64")]
+                    let addend = reloc.r_addend as isize;
+                    #[cfg(target_pointer_width = "32")]
+                    let addend = unsafe { (*addr) } as isize ;
+
+                    let ifunc_addr = addend + bias as isize;
+//                    dbg!(self.config.debug, "irelative: bias: {:#x} addend: {:#x} addr: {:#x}", bias, reloc.r_addend, addr);
                     unsafe {
-                        let ifunc = mem::transmute::<usize, (fn() -> usize)>(addr as usize);
-                        *reloc = ifunc() as usize;
+                        let ifunc = mem::transmute::<usize, (fn() -> usize)>(ifunc_addr as usize);
+                        *addr = ifunc() as usize;
 //                        dbg!(self.config.debug, "ifunc addr: 0x{:x}", *reloc);
                     }
                     count += 1;
@@ -402,6 +420,9 @@ impl<'process> Linker<'process> {
                 // TODO: add error checking
                 _ => ()
             }
+        }
+        if so.link_info.textrel {
+            let res = utils::mmap::mprotect_phdrs(&so.phdrs, bias, 0);
         }
         dbg!(self.config.debug, "relocate plt: {} symbols for {}", count, so.name());
     }

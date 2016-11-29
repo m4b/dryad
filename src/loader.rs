@@ -11,7 +11,7 @@ use elf::header;
 use elf::program_header;
 use elf::dyn;
 use elf::sym;
-use elf::rela;
+use elf::reloc;
 use elf::strtab::Strtab;
 use elf::gnu_hash::GnuHash;
 use tls;
@@ -196,9 +196,15 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
     // now construct the symtab
     let symtab = unsafe { sym::from_raw(link_info.symtab as *const sym::Sym, num_syms) };
 
-    // now grab relatab, and pltreltab which we'll use for relocating this shared object later
-    let relatab = unsafe { rela::from_raw(link_info.rela as *const rela::Rela, link_info.relasz) };
-    let pltrelatab = unsafe { rela::from_raw(link_info.jmprel as *const rela::Rela, link_info.pltrelsz) };
+    // now grab relocations, and pltreltab which we'll use for relocating this shared object later
+    #[cfg(target_pointer_width = "32")]
+    let relocations = unsafe { reloc::from_raw_rel(link_info.rel as *const reloc::Rel, link_info.relsz) };
+    #[cfg(target_pointer_width = "32")]
+    let pltrelocations = unsafe { reloc::from_raw_rel(link_info.jmprel as *const reloc::Rel, link_info.pltrelsz) };
+    #[cfg(target_pointer_width = "64")]
+    let relocations = unsafe { reloc::from_raw_rela(link_info.rela as *const reloc::Rela, link_info.relasz) };
+    #[cfg(target_pointer_width = "64")]
+    let pltrelocations = unsafe { reloc::from_raw_rela(link_info.jmprel as *const reloc::Rela, link_info.pltrelsz) };
 
     // the pltgot we need for doing lazy dynamic linking
     let pltgot = if let Some(addr) = link_info.pltgot { addr } else { 0 }; // musl doesn't have a PLTGOT, for example
@@ -217,8 +223,8 @@ pub fn load<'a> (soname: &str, load_path: String, fd: &mut File, debug: bool, la
         dynamic: dynamic,
         symtab: symtab,
         strtab: strtab,
-        relatab: relatab,
-        pltrelatab: pltrelatab,
+        relocations: relocations,
+        pltrelocations: pltrelocations,
         pltgot: pltgot as *const usize,
         gnu_hash: gnu_hash,
         load_path: Some (load_path),

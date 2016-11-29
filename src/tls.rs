@@ -344,7 +344,8 @@ pub const TLS_TCB_ALIGN: libc::size_t = 64;
 pub const DL_NNS: libc::size_t = 16;
 // dl-tls.c:34
 pub const TLS_STATIC_SURPLUS: libc::size_t = 64 + DL_NNS * 100;
-pub const TLS_DTV_UNALLOCATED: *mut libc::c_void = 0xffffffffffffffff as *mut libc::c_void;
+
+pub const TLS_DTV_UNALLOCATED: *mut libc::c_void = !0usize as *mut libc::c_void;
 
 // TODO: eventually replace musl's init_tls call with Lachesis and use it for our implementation
 /// https://en.wikipedia.org/wiki/Lachesis_(mythology)

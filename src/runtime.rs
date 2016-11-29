@@ -1,5 +1,5 @@
 use image::SharedObject;
-use elf::rela;
+use elf::reloc;
 use elf::gnu_hash;
 use utils;
 
@@ -25,8 +25,8 @@ pub extern fn dryad_resolve_symbol (rndzv_ptr: *const Rendezvous, rela_idx: usiz
 //        dbgc!(blue_bold: rndzv.debug, "dryad.runtime", "link_map_ptr: {:#?} rela_idx: {}", rndzv_ptr, rela_idx);
         let link_map = rndzv.link_map;
         let requesting_so = &link_map[rndzv.idx]; // get who called us using the index in the data structure
-        let rela = &requesting_so.pltrelatab[rela_idx]; // now get the relocation using the rela_idx the binary pushed onto the stack
-        let requested_symbol = &requesting_so.symtab[rela::r_sym(rela.r_info) as usize]; // obtain the actual symbol being requested
+        let rela = &requesting_so.pltrelocations[rela_idx]; // now get the relocation using the rela_idx the binary pushed onto the stack
+        let requested_symbol = &requesting_so.symtab[reloc::r_sym(rela.r_info) as usize]; // obtain the actual symbol being requested
         let name = &requesting_so.strtab[requested_symbol.st_name as usize]; // ... and now it's name, which we'll use to search
 //        dbgc!(blue_bold: rndzv.debug, "dryad.runtime", "reconstructed link_map of size {} with requesting binary {:#?} for symbol {} with rela idx {}", link_map.len(), requesting_so.name, name, rela_idx);
         let hash = gnu_hash::hash(name);

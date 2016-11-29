@@ -296,7 +296,12 @@ pub mod mmap {
                     // bionic says: make sure we're never simultaneously writable / executable
                     prot &= !PROT_EXEC;
                 }
-                let ret = unsafe { mprotect(seg_page_start as *const libc::c_void, (seg_page_end - seg_page_start) as libc::size_t, (prot | flags) as libc::c_int) };
+                let new_flags = prot | flags;
+                // avoid the syscall unless we're restoring the program header flags (flags == 0)
+                if flags != 0 && new_flags == prot {
+                    return true;
+                }
+                let ret = unsafe { mprotect(seg_page_start as *const libc::c_void, (seg_page_end - seg_page_start) as libc::size_t, new_flags as libc::c_int) };
                 if ret < 0 { return false }
             }
         }
