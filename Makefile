@@ -27,7 +27,7 @@ USRLIB=/usr/lib
 PT_INTERP=/tmp/${SONAME}
 
 CCOPT=-g -O0
-PREFIX=$(HOME)/.multirust/toolchains/nightly-x86_64-unknown-linux-gnu
+PREFIX=$(HOME)/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu
 LIB=$(PREFIX)/lib
 RUSTLIB=$(LIB)/rustlib/$(TRIPLE)/lib
 HASH=$(shell ls $(RUSTLIB) | grep "libstd.*.rlib" | grep -oe "-[[:alnum:]]*" | grep -oe "[[:alnum:]]*")
