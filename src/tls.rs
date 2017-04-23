@@ -339,8 +339,8 @@ pub const TLS_SLOTINFO_SURPLUS: libc::size_t = 62;
 // __alignof__ (struct pthread) says 8... but gdb shows this has 64
 pub const TLS_TCB_ALIGN: libc::size_t = 64;
 
-// "Non-shared code has no support for multiple namespaces."
-// sysdeps/generic/ldsodefs.h:276
+/// "Non-shared code has no support for multiple namespaces."
+/// sysdeps/generic/ldsodefs.h:276
 pub const DL_NNS: libc::size_t = 16;
 // dl-tls.c:34
 pub const TLS_STATIC_SURPLUS: libc::size_t = 64 + DL_NNS * 100;

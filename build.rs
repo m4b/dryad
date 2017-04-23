@@ -8,6 +8,12 @@ fn main () {
     println!("target: {}", target);
 
     let (target, arch) = match target.as_str() {
+        "i686-unknown-linux-gnu" => {
+            ("i686-unknown-linux-gnu", "x86")
+        },
+        "x86_64-unknown-linux-gnu" => {
+            ("x86_64-unknown-linux-gnu", "x86_64")
+        },
         "x86_64-unknown-linux-musl" => {
             ("x86_64-unknown-linux-gnu", "x86_64")
         },

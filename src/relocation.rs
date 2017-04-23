@@ -34,7 +34,7 @@ pub const JUMP_SLOT: u32 = reloc::R_ARM_JUMP_SLOT;
 #[cfg(target_arch = "arm")]
 pub const GLOB_DAT: u32 = reloc::R_ARM_GLOB_DAT;
 #[cfg(target_arch = "arm")]
-pub const RELATIVE: u32 = reloc::R_ARM2_RELATIVE;
+pub const RELATIVE: u32 = reloc::R_ARM_RELATIVE;
 #[cfg(target_arch = "arm")]
 pub const IRELATIVE: u32 = reloc::R_ARM_IRELATIVE;
 
