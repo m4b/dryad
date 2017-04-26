@@ -60,16 +60,18 @@ LIBDRYAD=libdryad.a
 
 LINK_ARGS := -pie --gc-sections -Bsymbolic --dynamic-list=${ETC}/dynamic-list.txt -I${PT_INTERP} -soname ${SONAME} -L$(USRLIB) -nostdlib -e _start
 
+LIBSTART=$(wildcard $(OUT_DIR)/deps/libasm-*)
 dryad.so.1: $(OUT_DIR)/$(LIBDRYAD)
 	@printf "\33[0;4;33mlinking:\33[0m \33[0;32m$(SONAME)\33[0m with $(HASH)\n"
 	$(LD) ${LINK_ARGS}\
 	 -o ${SONAME}\
+	 $(LIBSTART)\
 	 ${OUT_DIR}/$(LIBDRYAD)\
 	 ${RUSTLIBS}\
 	 ${CARGO_DEPS}
 	cp ${SONAME} /tmp
 
-$(OUT_DIR)/$(LIBDRYAD): $(SRC)
+$(OUT_DIR)/$(LIBDRYAD): $(SRC) asm/src/lib.rs
 	@printf "\33[0;4;33mcompiling:\33[0m \33[1;32mdryad\33[0m\n"
 	CC=$(CC) AR=$(AR) $(CARGO) rustc $(COLOR) -vv --verbose --target=$(TRIPLE) --lib -j 4 -- -C panic=abort #-C lto # uncomment this when lto is important
 
@@ -103,11 +105,13 @@ tests: ${TESTS}
 
 # for testing, debugging, etc.
 
+LIBSTART=$(wildcard $(OUT_DIR)/deps/libasm-*)
 link:
 	@printf "\33[0;4;33mlinking:\33[0m \33[0;32m$(SONAME)\33[0m with $(HASH)\n"
 	$(LD) -Map=${ETC}/dryad.map\
 	 ${LINK_ARGS}\
 	 -o ${SONAME}\
+	 $(LIBSTART)\
 	 ${OUT_DIR}/$(LIBDRYAD)\
 	 ${RUSTLIBS}\
 	 ${CARGO_DEPS}
