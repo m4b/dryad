@@ -30,9 +30,8 @@ rustup default nightly
 rustup target add x86_64-unknown-linux-musl
 ```
 
-Of course, you will also need your typical build tools on a linux system, essentially:
+All you really need now is rustup, an internet connection, and a linker for the target you're linking:
 
-- `gcc` (or `clang`)
 - `ld` (or `ld.gold`)
 - `curl`
 - an internet connection
@@ -49,16 +48,15 @@ Once that's settled you can then proceed as normal:
 
 ## Compilation and Linking Requirements
 
-The `Makefile` does four things:
+The `Makefile` does three things:
 
-1. compiles the x86-64 asm stubs which dryad needs (change the `gcc` call to `clang` here if you like) `gcc -fPIC -c -o start.o src/arch/x86/asm.s`
-2. compiles dryad into an object file: `rustc --target=x86_64-unknown-linux-musl src/lib.rs -g --emit obj -o dryad.o`
-3. links the asm stubs with dryad and then the rust standard libs, and pthreads and libc and etc., and provides the very important linker flags such as `-pie`, `-Bsymbolic`, `-I/tmp/dryad.so.1`, `-soname dryad.so.1`, etc.
-4. copies the resulting binary, `dryad.so.1`, into `/tmp/dryad.so.1` because that's what `PT_INTERPRETER` is set to in the test binaries. In the future we'll obviously make this `/usr/lib/dryad.so.1`, or wherever the appropriate place for the dynamic linker is (GNU's is called `ld-linux-x86-64.so.2` btw).
+1. compiles dryad into a static library, essentially: `cargo build -target=x86_64-unknown-linux-musl --lib`
+2. links the `libasm` entry function and runtime resolver functions with the dryad static library, and then the rust standard libs, and pthreads and libc and etc., and provides the very important linker flags such as `-pie`, `-Bsymbolic`, `-I/tmp/dryad.so.1`, `-soname dryad.so.1`, etc.
+3. copies the resulting binary, `dryad.so.1`, into `/tmp/dryad.so.1` because that's what `PT_INTERPRETER` is set to in the test binaries. In the future we'll obviously make this `/usr/lib/dryad.so.1`, or wherever the appropriate place for the dynamic linker is (GNU's is called `ld-linux-x86-64.so.2` btw).
 
-Really, stage `1` and `3` from above is the problem in the cargo pipeline, which is why I still need to manually link.  Additionally, rustc doesn't like to compile a musl binary as a shared object.
+Really, stage `1` and `2` from above is the problem in the cargo pipeline, which is why I still need to manually link.  Additionally, rustc doesn't like to compile a musl binary as a shared object.
 
-I believe some of these issues will go away if I transfer the start assembly into inline assembly in Rust source code (thereby potentially eliminating step 1), but the musl issue could be a problem.
+~~I believe some of these issues will go away if I transfer the start assembly into inline assembly in Rust source code (thereby potentially eliminating step 1), but the musl issue could be a problem.~~ (we use inline asm in separate rust crate now!)
 
 # Running
 
