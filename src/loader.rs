@@ -12,7 +12,7 @@ use elf::program_header;
 use elf::dyn;
 use elf::sym;
 use elf::reloc;
-use elf::strtab::Strtab;
+use goblin::strtab::Strtab;
 use elf::gnu_hash::GnuHash;
 use tls;
 

@@ -488,7 +488,6 @@ impl<'process> Linker<'process> {
     /// 1. First builds the executable and then all the shared object dependencies and joins the result
     /// 2. Then, creates the link map, and then relocates all the shared object dependencies and joins the result
     /// 3. Finally, relocates the executable, and then transfers control
-    #[no_mangle]
     pub fn link(mut self, block: &kernel_block::KernelBlock) -> Result<(), String> {
 
 //        dbg!(self.config.debug, "I am that I am:\n  {:#?}", &self);

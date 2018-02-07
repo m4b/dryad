@@ -9,7 +9,7 @@ use elf::header::Header;
 use elf::program_header::{self, ProgramHeader};
 use elf::dyn::{self, Dyn};
 use elf::sym::{self, Sym};
-use elf::strtab::Strtab;
+use goblin::strtab::Strtab;
 use elf::reloc;
 use elf::gnu_hash::GnuHash;
 use tls;

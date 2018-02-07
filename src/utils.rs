@@ -117,7 +117,7 @@ pub fn write_u64(i: u64, base16: bool) {
     } else {
         let count = num_digits(i);
         let mut _stack = [0; 20];
-        let mut chars = &mut _stack[0..count];
+        let chars = &mut _stack[0..count];
         let mut place = count;
         let mut current = i;
         let mut digit;
